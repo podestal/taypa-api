@@ -11,6 +11,7 @@ djoser==2.3.3
 drf-nested-routers==0.95.0
 idna==3.11
 oauthlib==3.3.1
+psycopg2==2.9.11
 pycparser==2.23
 PyJWT==2.10.1
 python3-openid==3.2.0
@@ -20,3 +21,6 @@ social-auth-app-django==5.6.0
 social-auth-core==4.8.1
 sqlparse==0.5.3
 urllib3==2.5.0
+daphne==4.2.1
+autobahn==22.7.1
+gunicorn==23.0.0
