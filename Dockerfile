@@ -9,8 +9,6 @@ COPY ./requirements.txt /tmp/requirements.txt
 COPY ./scripts /scripts
 COPY ./app /app
 
-# COPY ./app/sisfac/staticfiles /vol/web/static/
-
 WORKDIR /app
 EXPOSE 8000
 ARG DEV=false
