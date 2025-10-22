@@ -24,9 +24,8 @@ python manage.py migrate
 
 if [ "$ENVIRONMENT" = "development" ]; then
     echo "Starting server with Daphne for development..."
-    exec daphne -b 0.0.0.0 -p 8000 taypa.asgi:application
+    exec python manage.py runserver 0.0.0.0:8000
 else
     echo "Starting server with Gunicorn for production..."
-    exec gunicorn tapya.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
+    exec gunicorn taypa.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
 fi
-
