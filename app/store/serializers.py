@@ -24,3 +24,15 @@ class OrderItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.OrderItem
         fields = '__all__'
+
+
+class CustomerSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Customer
+        fields = '__all__'
+
+
+class AddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Address
+        fields = '__all__'
