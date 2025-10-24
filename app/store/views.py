@@ -41,9 +41,17 @@ class CustomerViewSet(viewsets.ModelViewSet):
             results = cursor.fetchall()    
         return Response(list(results))
 
-    # @action(detail=False, methods=['get'])
-    # def by_last_name(self, request):
-    #     last_name = 
+    @action(detail=False, methods=['get'])
+    def by_last_name(self, request):
+        last_name = request.query_params.get('last_name')
+        if not last_name:
+            return Response({'error': 'last_name parameter is required'}, status=400)
+        
+        sql_query = 'SELECT * FROM store_customer WHERE last_name ILIKE %s LIMIT 10'
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query, [f'{last_name}%'])
+            results = cursor.fetchall()
+        return Response(list(results))
 
 
 class AddressViewSet(viewsets.ModelViewSet):
