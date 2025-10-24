@@ -1,5 +1,8 @@
 from rest_framework import viewsets
 from . import models, serializers
+from rest_framework.decorators import action
+from django.db import connection
+from rest_framework.response import Response
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -25,6 +28,22 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = models.Customer.objects.all()
     serializer_class = serializers.CustomerSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_first_name(self, request):
+        first_name = request.query_params.get('first_name')
+        if not first_name:
+            return Response({'error': 'first_name parameter is required'}, status=400)
+        
+        sql_query = 'SELECT * FROM store_customer WHERE first_name ILIKE %s LIMIT 10'
+        with connection.cursor() as cursor:
+            cursor.execute(sql_query, [f'{first_name}%'])
+            results = cursor.fetchall()    
+        return Response(list(results))
+
+    # @action(detail=False, methods=['get'])
+    # def by_last_name(self, request):
+    #     last_name = 
 
 
 class AddressViewSet(viewsets.ModelViewSet):
