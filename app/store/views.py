@@ -3,6 +3,7 @@ from . import models, serializers
 from rest_framework.decorators import action
 from django.db import connection
 from rest_framework.response import Response
+from django.db import transaction
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
