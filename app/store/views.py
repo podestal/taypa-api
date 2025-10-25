@@ -64,3 +64,13 @@ class CustomerViewSet(viewsets.ModelViewSet):
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = models.Address.objects.all()
     serializer_class = serializers.AddressSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_customer(self, request):
+        customer_id = request.query_params.get('customer_id')
+        if not customer_id:
+            return Response({'error': 'customer_id parameter is required'}, status=400)
+        
+        addresses = models.Address.objects.filter(customer_id=customer_id)
+        serializer = serializers.AddressSerializer(addresses, many=True)
+        return Response(serializer.data)
