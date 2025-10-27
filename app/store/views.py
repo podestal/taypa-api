@@ -15,6 +15,16 @@ class DishViewSet(viewsets.ModelViewSet):
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
 
+    @action(detail=False, methods=['get'])
+    def by_category(self, request):
+        category_id = request.query_params.get('category_id')
+        if not category_id:
+            return Response({'error': 'category_id parameter is required'}, status=400)
+        
+        dishes = models.Dish.objects.filter(category_id=category_id)
+        serializer = serializers.DishSerializer(dishes, many=True)
+        return Response(serializer.data)
+
 
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = models.Order.objects.all()
