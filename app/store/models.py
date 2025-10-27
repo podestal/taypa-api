@@ -52,6 +52,18 @@ class Address(models.Model):
 
 
 class Order(models.Model):
+
+    ORDER_STATUS_CHOICES = [
+        ('IP', 'In Progress'),
+        ('IK', 'In Kitchen'),
+        ('PA', 'Packing'),
+        ('HA', 'Handed'),
+        ('IT', 'In Transit'),
+        ('DO', 'Delivered'),
+        ('CA', 'Cancelled'),
+    ]
+    
+    status = models.CharField(max_length=2, choices=ORDER_STATUS_CHOICES, default='IP')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
