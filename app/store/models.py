@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from datetime import date
 
 
 class Category(models.Model):
@@ -60,6 +61,23 @@ class Order(models.Model):
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.order_number:  # Only generate if not set
+            today = date.today()
+            
+            # Count how many orders were created today
+            today_orders = Order.objects.filter(
+                created_at__date=today
+            ).count()
+            
+            # Add 1 to get the next number
+            next_number = today_orders + 1
+            
+            # Format: YYYYMMDD-1, YYYYMMDD-2, etc.
+            self.order_number = f"{today.strftime('%Y%m%d')}-{next_number}"
+        
+        super().save(*args, **kwargs)
 
 
 class OrderItem(models.Model):
