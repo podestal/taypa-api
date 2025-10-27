@@ -8,6 +8,9 @@ class Category(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return self.name
+
 
 class Dish(models.Model):
     name = models.CharField(max_length=255)
@@ -17,6 +20,9 @@ class Dish(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return self.name
+
 
 class Customer(models.Model):
     first_name = models.CharField(max_length=255)
@@ -24,6 +30,9 @@ class Customer(models.Model):
     phone_number = models.CharField(max_length=255)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.first_name} {self.last_name}"
 
 
 class Address(models.Model):
@@ -37,6 +46,9 @@ class Address(models.Model):
         on_delete=models.CASCADE,
         related_name='addresses')
 
+    def __str__(self):
+        return f"{self.street} - {self.reference}"
+
 
 class Order(models.Model):
     created_by = models.ForeignKey(
@@ -44,6 +56,7 @@ class Order(models.Model):
         on_delete=models.CASCADE,
         related_name='orders'
     )
+    order_number = models.CharField(max_length=255)
     customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
