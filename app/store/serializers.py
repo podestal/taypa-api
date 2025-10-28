@@ -27,6 +27,21 @@ class OrderItemSerializer(serializers.ModelSerializer):
         fields = '__all__'
 
 
+class GetOrderItemByOrderSerializer(serializers.ModelSerializer):
+    dish = serializers.SerializerMethodField()
+    category = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = models.OrderItem
+        fields = ['id', 'dish', 'category', 'quantity', 'price', 'observation']
+
+    def get_dish(self, obj):
+        return obj.dish.name
+
+    def get_category(self, obj):
+        return obj.dish.category.name
+
+
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Customer

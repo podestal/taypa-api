@@ -32,8 +32,18 @@ class OrderViewSet(viewsets.ModelViewSet):
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):
-    queryset = models.OrderItem.objects.all()
+    queryset = models.OrderItem.objects.select_related('dish', 'category', 'order')
     serializer_class = serializers.OrderItemSerializer
+
+    @action(detail=False, methods=['get'])
+    def by_order(self, request):
+        order_id = request.query_params.get('order_id')
+        if not order_id:
+            return Response({'error': 'order_id parameter is required'}, status=400)
+        
+        order_items = models.OrderItem.objects.filter(order_id=order_id)
+        serializer = serializers.GetOrderItemByOrderSerializer(order_items, many=True)
+        return Response(serializer.data)
 
 
 class CustomerViewSet(viewsets.ModelViewSet):
