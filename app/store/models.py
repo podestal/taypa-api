@@ -62,7 +62,14 @@ class Order(models.Model):
         ('DO', 'Delivered'),
         ('CA', 'Cancelled'),
     ]
-    
+
+    ORDER_TYPE_CHOICES = [
+        ('T', 'Table'),
+        ('D', 'Delivery'),
+        ('G', 'To Go'),
+    ]
+
+    order_type = models.CharField(max_length=2, choices=ORDER_TYPE_CHOICES, default='G')
     status = models.CharField(max_length=2, choices=ORDER_STATUS_CHOICES, default='IP')
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
