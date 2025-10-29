@@ -51,6 +51,16 @@ class CustomerViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.CustomerSerializer
 
     @action(detail=False, methods=['get'])
+    def by_name(self, request):
+        name = request.query_params.get('name')
+        if not name:
+            return Response({'error': 'name parameter is required'}, status=400)
+        
+        customers = models.Customer.objects.filter(first_name__icontains=name) | models.Customer.objects.filter(last_name__icontains=name)
+        serializer = serializers.CustomerSerializer(customers, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
     def by_first_name(self, request):
         first_name = request.query_params.get('first_name')
         if not first_name:
