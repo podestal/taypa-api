@@ -42,6 +42,28 @@ class GetOrderItemByOrderSerializer(serializers.ModelSerializer):
         return obj.dish.category.name
 
 
+class GetOrderInKitchenSerializer(serializers.ModelSerializer):
+    categories = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.Order
+        fields = ['id', 'order_number', 'created_at', 'categories']
+
+    def get_categories(self, obj):
+        items = getattr(obj, 'orderitem_set').all()
+        grouped = {}
+        for item in items:
+            category_name = item.dish.category.name if item.dish and item.dish.category else 'Sin Categoria'
+            if category_name not in grouped:
+                grouped[category_name] = []
+            grouped[category_name].append({
+                'id': item.id,
+                'dish': item.dish.name,
+                'quantity': item.quantity,
+                'observation': item.observation,
+            })
+        return grouped
+
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Customer

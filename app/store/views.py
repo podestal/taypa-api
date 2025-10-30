@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from . import models, serializers
 from rest_framework.decorators import action
 from django.db import connection
+from django.db.models import Prefetch
 from rest_framework.response import Response
 from django.db import transaction
 
@@ -29,6 +30,17 @@ class DishViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = models.Order.objects.all()
     serializer_class = serializers.OrderSerializer
+
+    @action(detail=False, methods=['get'])
+    def in_kitchen(self, request):
+        orders = models.Order.objects.filter(status='IK').prefetch_related(
+            Prefetch(
+                'orderitem_set',
+                queryset=models.OrderItem.objects.select_related('dish__category', 'dish')
+            )
+        )
+        serializer = serializers.GetOrderInKitchenSerializer(orders, many=True)
+        return Response(serializer.data)
 
 
 class OrderItemViewSet(viewsets.ModelViewSet):
