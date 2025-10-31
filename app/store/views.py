@@ -43,6 +43,24 @@ class OrderViewSet(viewsets.ModelViewSet):
         return Response(serializer.data)
 
 
+    @action(detail=False, methods=['get'])
+    def by_status(self, request):
+        status = request.query_params.get('status')
+        if not status:
+            return Response({'error': 'status parameter is required'}, status=400)
+        
+        orders = models.Order.objects.filter(status=status).select_related(
+            'customer', 'address'
+        ).prefetch_related(
+            Prefetch(
+                'orderitem_set',
+                queryset=models.OrderItem.objects.select_related('dish__category', 'category')
+            )
+        )
+        serializer = serializers.GetOrderByStatusSerializer(orders, many=True)
+        return Response(serializer.data)
+
+
 class OrderItemViewSet(viewsets.ModelViewSet):
     queryset = models.OrderItem.objects.select_related('dish', 'category', 'order')
     serializer_class = serializers.OrderItemSerializer

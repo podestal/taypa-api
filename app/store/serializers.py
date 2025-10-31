@@ -47,7 +47,55 @@ class GetOrderInKitchenSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = models.Order
-        fields = ['id', 'order_number', 'created_at', 'categories']
+        fields = ['id', 'order_number', 'updated_at', 'categories']
+
+    def get_categories(self, obj):
+        items = getattr(obj, 'orderitem_set').all()
+        grouped = {}
+        for item in items:
+            category_name = item.dish.category.name if item.dish and item.dish.category else 'Sin Categoria'
+            if category_name not in grouped:
+                grouped[category_name] = []
+            grouped[category_name].append({
+                'id': item.id,
+                'dish': item.dish.name,
+                'quantity': item.quantity,
+                'observation': item.observation,
+            })
+        return grouped
+
+
+class GetOrderByStatusSerializer(serializers.ModelSerializer):
+    customer_name = serializers.SerializerMethodField()
+    address_info = serializers.SerializerMethodField()
+    categories = OrderItemSerializer(many=True, read_only=True, source='orderitem_set')
+
+    class Meta:
+        model = models.Order
+        fields = [
+            'id', 
+            'order_number', 
+            'order_type', 
+            'created_at', 
+            'updated_at', 
+            'status', 
+            'customer_name',
+            'address_info',
+            'created_by',
+            'categories',
+        ]
+    
+    def get_customer_name(self, obj):
+        """Return customer full name or empty string if no customer"""
+        if obj.customer:
+            return f"{obj.customer.first_name} {obj.customer.last_name}"
+        return ""
+    
+    def get_address_info(self, obj):
+        """Return address street and reference or empty string if no address"""
+        if obj.address:
+            return f"{obj.address.street} - {obj.address.reference}"
+        return ""
 
     def get_categories(self, obj):
         items = getattr(obj, 'orderitem_set').all()
