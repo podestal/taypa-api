@@ -68,7 +68,7 @@ class GetOrderInKitchenSerializer(serializers.ModelSerializer):
 class GetOrderByStatusSerializer(serializers.ModelSerializer):
     customer_name = serializers.SerializerMethodField()
     address_info = serializers.SerializerMethodField()
-    categories = OrderItemSerializer(many=True, read_only=True, source='orderitem_set')
+    categories = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Order
@@ -109,6 +109,7 @@ class GetOrderByStatusSerializer(serializers.ModelSerializer):
                 'dish': item.dish.name,
                 'quantity': item.quantity,
                 'observation': item.observation,
+                'price': item.price,
             })
         return grouped
 
