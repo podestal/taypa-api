@@ -96,36 +96,6 @@ class CustomerViewSet(viewsets.ModelViewSet):
         serializer = serializers.CustomerSerializer(customers, many=True)
         return Response(serializer.data)
 
-    @action(detail=False, methods=['get'])
-    def by_first_name(self, request):
-        first_name = request.query_params.get('first_name')
-        if not first_name:
-            return Response({'error': 'first_name parameter is required'}, status=400)
-        
-        sql_query = 'SELECT id FROM store_customer WHERE first_name ILIKE %s LIMIT 10'
-        with connection.cursor() as cursor:
-            cursor.execute(sql_query, [f'{first_name}%'])
-            results = cursor.fetchall()  
-        customer_ids = [row[0] for row in results]
-        customers = models.Customer.objects.filter(id__in=customer_ids)
-        serializer = serializers.CustomerSerializer(customers, many=True)
-        return Response(serializer.data)
-
-    @action(detail=False, methods=['get'])
-    def by_last_name(self, request):
-        last_name = request.query_params.get('last_name')
-        if not last_name:
-            return Response({'error': 'last_name parameter is required'}, status=400)
-        
-        sql_query = 'SELECT id FROM store_customer WHERE last_name ILIKE %s LIMIT 10'
-        with connection.cursor() as cursor:
-            cursor.execute(sql_query, [f'{last_name}%'])
-            results = cursor.fetchall()
-        customer_ids = [row[0] for row in results]
-        customers = models.Customer.objects.filter(id__in=customer_ids)
-        serializer = serializers.CustomerSerializer(customers, many=True)
-        return Response(serializer.data)
-
 
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = models.Address.objects.all()

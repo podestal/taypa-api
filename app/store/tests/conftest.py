@@ -45,3 +45,26 @@ def dish(category):
         is_active=True
     )
 
+
+@pytest.fixture
+def customer():
+    """Create a test customer"""
+    return baker.make(
+        models.Customer,
+        first_name='John',
+        last_name='Doe',
+        phone_number='1234567890'
+    )
+
+
+@pytest.fixture
+def address(customer):
+    """Create a test address"""
+    return baker.make(
+        models.Address,
+        street='123 Main St',
+        reference='Apt 4B',
+        customer=customer,
+        is_primary=False
+    )
+
