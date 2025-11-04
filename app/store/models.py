@@ -1,6 +1,7 @@
 from django.db import models
 from django.conf import settings
-from datetime import date
+from django.utils import timezone
+from datetime import date, timedelta
 
 
 class Category(models.Model):
@@ -83,9 +84,18 @@ class Order(models.Model):
     address = models.ForeignKey(Address, on_delete=models.CASCADE, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    
+    # Status timestamp fields - automatically populated when status changes
+    in_kitchen_at = models.DateTimeField(null=True, blank=True)
+    packing_at = models.DateTimeField(null=True, blank=True)
+    handed_at = models.DateTimeField(null=True, blank=True)
+    in_transit_at = models.DateTimeField(null=True, blank=True)
+    delivered_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
-        if not self.order_number:  # Only generate if not set
+        # Generate order number if not set
+        if not self.order_number:
             today = date.today()
             
             # Count how many orders were created today
@@ -99,7 +109,50 @@ class Order(models.Model):
             # Format: YYYYMMDD-1, YYYYMMDD-2, etc.
             self.order_number = f"{today.strftime('%Y%m%d')}-{next_number}"
         
+        # Track status changes and set timestamps
+        if self.pk:  # Only check for status changes if order already exists
+            try:
+                old_instance = Order.objects.get(pk=self.pk)
+                old_status = old_instance.status
+                
+                # If status changed, update the corresponding timestamp
+                if old_status != self.status:
+                    now = timezone.now()
+                    
+                    if self.status == 'IK' and not self.in_kitchen_at:
+                        self.in_kitchen_at = now
+                    elif self.status == 'PA' and not self.packing_at:
+                        self.packing_at = now
+                    elif self.status == 'HA' and not self.handed_at:
+                        self.handed_at = now
+                    elif self.status == 'IT' and not self.in_transit_at:
+                        self.in_transit_at = now
+                    elif self.status == 'DO' and not self.delivered_at:
+                        self.delivered_at = now
+                    elif self.status == 'CA' and not self.cancelled_at:
+                        self.cancelled_at = now
+            except Order.DoesNotExist:
+                pass
+        
         super().save(*args, **kwargs)
+    
+    # Helper methods to calculate duration for each stage
+    def get_current_stage_duration(self):
+        """Returns how long the order has been in the current stage"""
+        stage_start_map = {
+            'IP': self.created_at,
+            'IK': self.in_kitchen_at,
+            'PA': self.packing_at,
+            'HA': self.handed_at,
+            'IT': self.in_transit_at,
+            'DO': self.delivered_at,
+            'CA': self.cancelled_at,
+        }
+        
+        stage_start = stage_start_map.get(self.status)
+        if stage_start:
+            return timezone.now() - stage_start
+        return None
 
 
 class OrderItem(models.Model):

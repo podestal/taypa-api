@@ -44,10 +44,11 @@ class GetOrderItemByOrderSerializer(serializers.ModelSerializer):
 
 class GetOrderInKitchenSerializer(serializers.ModelSerializer):
     categories = serializers.SerializerMethodField()
+    time_in_current_stage = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Order
-        fields = ['id', 'order_number', 'updated_at', 'categories']
+        fields = ['id', 'order_number', 'updated_at', 'in_kitchen_at', 'time_in_current_stage', 'categories']
 
     def get_categories(self, obj):
         items = getattr(obj, 'orderitem_set').all()
@@ -63,12 +64,20 @@ class GetOrderInKitchenSerializer(serializers.ModelSerializer):
                 'observation': item.observation,
             })
         return grouped
+    
+    def get_time_in_current_stage(self, obj):
+        """Returns time in minutes the order has been in current stage"""
+        duration = obj.get_current_stage_duration()
+        if duration:
+            return round(duration.total_seconds() / 60, 1)  # Returns minutes
+        return None
 
 
 class GetOrderByStatusSerializer(serializers.ModelSerializer):
     customer_name = serializers.SerializerMethodField()
     address_info = serializers.SerializerMethodField()
     categories = serializers.SerializerMethodField()
+    time_in_current_stage = serializers.SerializerMethodField()
 
     class Meta:
         model = models.Order
@@ -83,6 +92,14 @@ class GetOrderByStatusSerializer(serializers.ModelSerializer):
             'address_info',
             'created_by',
             'categories',
+            'time_in_current_stage',
+            # Timestamp fields for each stage
+            'in_kitchen_at',
+            'packing_at',
+            'handed_at',
+            'in_transit_at',
+            'delivered_at',
+            'cancelled_at',
         ]
     
     def get_customer_name(self, obj):
@@ -112,6 +129,14 @@ class GetOrderByStatusSerializer(serializers.ModelSerializer):
                 'price': item.price,
             })
         return grouped
+    
+    def get_time_in_current_stage(self, obj):
+        """Returns time in minutes the order has been in current stage"""
+        duration = obj.get_current_stage_duration()
+        if duration:
+            return round(duration.total_seconds() / 60, 1)  # Returns minutes
+        return None
+
 
 class CustomerSerializer(serializers.ModelSerializer):
     class Meta:
