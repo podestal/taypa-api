@@ -5,16 +5,19 @@ from django.db import connection
 from django.db.models import Prefetch
 from rest_framework.response import Response
 from django.db import transaction
+from rest_framework.permissions import IsAuthenticated
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = models.Category.objects.all()
     serializer_class = serializers.CategorySerializer
+    permission_classes = [IsAuthenticated]
 
 
 class DishViewSet(viewsets.ModelViewSet):
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_category(self, request):
@@ -30,6 +33,7 @@ class DishViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = models.Order.objects.all()
     serializer_class = serializers.OrderSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def in_kitchen(self, request):
@@ -64,6 +68,7 @@ class OrderViewSet(viewsets.ModelViewSet):
 class OrderItemViewSet(viewsets.ModelViewSet):
     queryset = models.OrderItem.objects.select_related('dish', 'category', 'order')
     serializer_class = serializers.OrderItemSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_order(self, request):
@@ -79,6 +84,7 @@ class OrderItemViewSet(viewsets.ModelViewSet):
 class CustomerViewSet(viewsets.ModelViewSet):
     queryset = models.Customer.objects.all()
     serializer_class = serializers.CustomerSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_name(self, request):
@@ -124,6 +130,7 @@ class CustomerViewSet(viewsets.ModelViewSet):
 class AddressViewSet(viewsets.ModelViewSet):
     queryset = models.Address.objects.all()
     serializer_class = serializers.AddressSerializer
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'])
     def by_customer(self, request):

@@ -2,72 +2,55 @@ import pytest
 from decimal import Decimal
 from model_bakery import baker
 from rest_framework import status
-from rest_framework.test import APIClient
 from django.urls import reverse
 
 from store import models
 
-
-@pytest.fixture
-def api_client():
-    """API client for making requests"""
-    return APIClient()
-
-
-@pytest.fixture
-def category():
-    """Create a test category"""
-    return baker.make(models.Category, name='Test Category', is_active=True)
-
-
-@pytest.fixture
-def dish(category):
-    """Create a test dish"""
-    return baker.make(
-        models.Dish,
-        name='Test Dish',
-        description='Test Description',
-        price=Decimal('19.99'),
-        category=category,
-        is_active=True
-    )
+# Fixtures are imported from conftest.py automatically by pytest
 
 
 @pytest.mark.django_db
 class TestDishListView:
     """Tests for GET /api/dishes/ - List all dishes"""
     
-    def test_list_dishes_empty(self, api_client):
-        """Test listing dishes when none exist"""
+    def test_list_dishes_unauthenticated(self, api_client):
+        """Test that unauthenticated requests are rejected"""
         url = reverse('dish-list')
         response = api_client.get(url)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_list_dishes_empty(self, authenticated_api_client):
+        """Test listing dishes when none exist"""
+        url = reverse('dish-list')
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data == []
     
-    def test_list_dishes_single(self, api_client, dish):
+    def test_list_dishes_single(self, authenticated_api_client, dish):
         """Test listing a single dish"""
         url = reverse('dish-list')
-        response = api_client.get(url)
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 1
         assert response.data[0]['name'] == 'Test Dish'
         assert response.data[0]['price'] == '19.99'
     
-    def test_list_dishes_multiple(self, api_client, category):
+    def test_list_dishes_multiple(self, authenticated_api_client, category):
         """Test listing multiple dishes"""
         baker.make(models.Dish, category=category, _quantity=3)
         url = reverse('dish-list')
-        response = api_client.get(url)
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 3
     
-    def test_list_dishes_includes_all_fields(self, api_client, dish):
+    def test_list_dishes_includes_all_fields(self, authenticated_api_client, dish):
         """Test that all fields are included in response"""
         url = reverse('dish-list')
-        response = api_client.get(url)
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         data = response.data[0]
@@ -85,7 +68,19 @@ class TestDishListView:
 class TestDishCreateView:
     """Tests for POST /api/dishes/ - Create dish"""
     
-    def test_create_dish_success(self, api_client, category):
+    def test_create_dish_unauthenticated(self, api_client, category):
+        """Test that unauthenticated requests are rejected"""
+        url = reverse('dish-list')
+        data = {
+            'name': 'New Dish',
+            'price': '25.99',
+            'category': category.id
+        }
+        response = api_client.post(url, data)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_create_dish_success(self, authenticated_api_client, category):
         """Test creating a dish successfully"""
         url = reverse('dish-list')
         data = {
@@ -95,7 +90,7 @@ class TestDishCreateView:
             'category': category.id,
             'is_active': True
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['name'] == 'New Dish'
@@ -105,7 +100,7 @@ class TestDishCreateView:
         # Verify dish was created in database
         assert models.Dish.objects.filter(name='New Dish').exists()
     
-    def test_create_dish_missing_name(self, api_client, category):
+    def test_create_dish_missing_name(self, authenticated_api_client, category):
         """Test creating dish without name (required field)"""
         url = reverse('dish-list')
         data = {
@@ -113,11 +108,11 @@ class TestDishCreateView:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_dish_missing_price(self, api_client, category):
+    def test_create_dish_missing_price(self, authenticated_api_client, category):
         """Test creating dish without price (required field)"""
         url = reverse('dish-list')
         data = {
@@ -125,11 +120,11 @@ class TestDishCreateView:
             'description': 'Test',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_dish_missing_category(self, api_client):
+    def test_create_dish_missing_category(self, authenticated_api_client):
         """Test creating dish without category (required field)"""
         url = reverse('dish-list')
         data = {
@@ -137,11 +132,11 @@ class TestDishCreateView:
             'description': 'Test',
             'price': '25.99'
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_dish_invalid_category(self, api_client):
+    def test_create_dish_invalid_category(self, authenticated_api_client):
         """Test creating dish with non-existent category"""
         url = reverse('dish-list')
         data = {
@@ -150,11 +145,11 @@ class TestDishCreateView:
             'price': '25.99',
             'category': 99999  # Non-existent ID
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_create_dish_invalid_price(self, api_client, category):
+    def test_create_dish_invalid_price(self, authenticated_api_client, category):
         """Test creating dish with invalid price"""
         url = reverse('dish-list')
         data = {
@@ -163,13 +158,13 @@ class TestDishCreateView:
             'price': '-10.00',  # Negative price
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         # Should either fail validation or be accepted depending on model validation
         # Adjust assertion based on your business logic
         assert response.status_code in [status.HTTP_400_BAD_REQUEST, status.HTTP_201_CREATED]
     
-    def test_create_dish_empty_description(self, api_client, category):
+    def test_create_dish_empty_description(self, authenticated_api_client, category):
         """Test creating dish with empty description (should be allowed)"""
         url = reverse('dish-list')
         data = {
@@ -178,12 +173,12 @@ class TestDishCreateView:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['description'] == ''
     
-    def test_create_dish_default_is_active(self, api_client, category):
+    def test_create_dish_default_is_active(self, authenticated_api_client, category):
         """Test that is_active defaults to True when not provided"""
         url = reverse('dish-list')
         data = {
@@ -191,7 +186,7 @@ class TestDishCreateView:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
         
@@ -211,20 +206,27 @@ class TestDishCreateView:
 class TestDishDetailView:
     """Tests for GET /api/dishes/{id}/ - Retrieve dish"""
     
-    def test_retrieve_dish_success(self, api_client, dish):
-        """Test retrieving a dish successfully"""
+    def test_retrieve_dish_unauthenticated(self, api_client, dish):
+        """Test that unauthenticated requests are rejected"""
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         response = api_client.get(url)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_retrieve_dish_success(self, authenticated_api_client, dish):
+        """Test retrieving a dish successfully"""
+        url = reverse('dish-detail', kwargs={'pk': dish.id})
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['id'] == dish.id
         assert response.data['name'] == 'Test Dish'
         assert response.data['price'] == '19.99'
     
-    def test_retrieve_dish_not_found(self, api_client):
+    def test_retrieve_dish_not_found(self, authenticated_api_client):
         """Test retrieving non-existent dish"""
         url = reverse('dish-detail', kwargs={'pk': 99999})
-        response = api_client.get(url)
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -233,7 +235,15 @@ class TestDishDetailView:
 class TestDishUpdateView:
     """Tests for PUT/PATCH /api/dishes/{id}/ - Update dish"""
     
-    def test_update_dish_put_success(self, api_client, dish):
+    def test_update_dish_unauthenticated(self, api_client, dish):
+        """Test that unauthenticated requests are rejected"""
+        url = reverse('dish-detail', kwargs={'pk': dish.id})
+        data = {'name': 'Updated'}
+        response = api_client.patch(url, data)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_update_dish_put_success(self, authenticated_api_client, dish):
         """Test full update (PUT) of dish"""
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         data = {
@@ -243,7 +253,7 @@ class TestDishUpdateView:
             'category': dish.category.id,
             'is_active': False
         }
-        response = api_client.put(url, data)
+        response = authenticated_api_client.put(url, data)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['name'] == 'Updated Dish'
@@ -255,11 +265,11 @@ class TestDishUpdateView:
         assert dish.name == 'Updated Dish'
         assert dish.price == Decimal('29.99')
     
-    def test_partial_update_dish_patch_success(self, api_client, dish):
+    def test_partial_update_dish_patch_success(self, authenticated_api_client, dish):
         """Test partial update (PATCH) of dish"""
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         data = {'name': 'Partially Updated Dish'}
-        response = api_client.patch(url, data)
+        response = authenticated_api_client.patch(url, data)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['name'] == 'Partially Updated Dish'
@@ -271,22 +281,22 @@ class TestDishUpdateView:
         assert dish.name == 'Partially Updated Dish'
         assert dish.price == Decimal('19.99')
     
-    def test_update_dish_price(self, api_client, dish):
+    def test_update_dish_price(self, authenticated_api_client, dish):
         """Test updating only the price"""
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         data = {'price': '39.99'}
-        response = api_client.patch(url, data)
+        response = authenticated_api_client.patch(url, data)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['price'] == '39.99'
     
-    def test_update_dish_toggle_is_active(self, api_client, dish):
+    def test_update_dish_toggle_is_active(self, authenticated_api_client, dish):
         """Test toggling is_active field"""
         assert dish.is_active is True
         
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         data = {'is_active': False}
-        response = api_client.patch(url, data)
+        response = authenticated_api_client.patch(url, data)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['is_active'] is False
@@ -294,11 +304,11 @@ class TestDishUpdateView:
         dish.refresh_from_db()
         assert dish.is_active is False
     
-    def test_update_dish_not_found(self, api_client):
+    def test_update_dish_not_found(self, authenticated_api_client):
         """Test updating non-existent dish"""
         url = reverse('dish-detail', kwargs={'pk': 99999})
         data = {'name': 'Updated'}
-        response = api_client.patch(url, data)
+        response = authenticated_api_client.patch(url, data)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
 
@@ -307,25 +317,32 @@ class TestDishUpdateView:
 class TestDishDeleteView:
     """Tests for DELETE /api/dishes/{id}/ - Delete dish"""
     
-    def test_delete_dish_success(self, api_client, dish):
+    def test_delete_dish_unauthenticated(self, api_client, dish):
+        """Test that unauthenticated requests are rejected"""
+        url = reverse('dish-detail', kwargs={'pk': dish.id})
+        response = api_client.delete(url)
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_delete_dish_success(self, authenticated_api_client, dish):
         """Test deleting a dish successfully"""
         dish_id = dish.id
         url = reverse('dish-detail', kwargs={'pk': dish_id})
-        response = api_client.delete(url)
+        response = authenticated_api_client.delete(url)
         
         assert response.status_code == status.HTTP_204_NO_CONTENT
         
         # Verify dish was deleted from database
         assert not models.Dish.objects.filter(id=dish_id).exists()
     
-    def test_delete_dish_not_found(self, api_client):
+    def test_delete_dish_not_found(self, authenticated_api_client):
         """Test deleting non-existent dish"""
         url = reverse('dish-detail', kwargs={'pk': 99999})
-        response = api_client.delete(url)
+        response = authenticated_api_client.delete(url)
         
         assert response.status_code == status.HTTP_404_NOT_FOUND
     
-    def test_delete_dish_with_protected_category(self, api_client, dish):
+    def test_delete_dish_with_protected_category(self, authenticated_api_client, dish):
         """Test that category is protected (PROTECT on_delete)"""
         # This test verifies that if a dish exists, 
         # the category cannot be deleted (PROTECT prevents deletion)
@@ -340,7 +357,14 @@ class TestDishDeleteView:
 class TestDishByCategoryAction:
     """Tests for GET /api/dishes/by_category/?category_id={id} - Custom action"""
     
-    def test_by_category_success(self, api_client, category):
+    def test_by_category_unauthenticated(self, api_client, category):
+        """Test that unauthenticated requests are rejected"""
+        url = reverse('dish-by-category')
+        response = api_client.get(url, {'category_id': category.id})
+        
+        assert response.status_code == status.HTTP_403_FORBIDDEN
+    
+    def test_by_category_success(self, authenticated_api_client, category):
         """Test getting dishes by category successfully"""
         # Create dishes in the category
         dish1 = baker.make(models.Dish, category=category, name='Dish 1')
@@ -351,7 +375,7 @@ class TestDishByCategoryAction:
         baker.make(models.Dish, category=other_category, name='Other Dish')
         
         url = reverse('dish-by-category')
-        response = api_client.get(url, {'category_id': category.id})
+        response = authenticated_api_client.get(url, {'category_id': category.id})
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 2
@@ -360,33 +384,33 @@ class TestDishByCategoryAction:
         assert 'Dish 2' in dish_names
         assert 'Other Dish' not in dish_names
     
-    def test_by_category_empty_result(self, api_client, category):
+    def test_by_category_empty_result(self, authenticated_api_client, category):
         """Test getting dishes from category with no dishes"""
         url = reverse('dish-by-category')
-        response = api_client.get(url, {'category_id': category.id})
+        response = authenticated_api_client.get(url, {'category_id': category.id})
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data == []
     
-    def test_by_category_missing_parameter(self, api_client):
+    def test_by_category_missing_parameter(self, authenticated_api_client):
         """Test by_category without category_id parameter"""
         url = reverse('dish-by-category')
-        response = api_client.get(url)
+        response = authenticated_api_client.get(url)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'error' in response.data
         assert 'category_id' in response.data['error'].lower()
     
-    def test_by_category_invalid_category_id(self, api_client):
+    def test_by_category_invalid_category_id(self, authenticated_api_client):
         """Test by_category with non-existent category_id"""
         url = reverse('dish-by-category')
-        response = api_client.get(url, {'category_id': 99999})
+        response = authenticated_api_client.get(url, {'category_id': 99999})
         
         # Should return empty list (no error, just no results)
         assert response.status_code == status.HTTP_200_OK
         assert response.data == []
     
-    def test_by_category_invalid_category_id_format(self, api_client):
+    def test_by_category_invalid_category_id_format(self, authenticated_api_client):
         """Test by_category with invalid category_id format"""
         url = reverse('dish-by-category')
         
@@ -396,9 +420,9 @@ class TestDishByCategoryAction:
         # This test documents the current behavior (raises ValueError) and could be
         # updated if the view is improved to validate input.
         with pytest.raises(ValueError, match="Field 'id' expected a number"):
-            api_client.get(url, {'category_id': 'invalid'})
+            authenticated_api_client.get(url, {'category_id': 'invalid'})
     
-    def test_by_category_multiple_categories(self, api_client):
+    def test_by_category_multiple_categories(self, authenticated_api_client):
         """Test filtering works correctly with multiple categories"""
         category1 = baker.make(models.Category, name='Category 1')
         category2 = baker.make(models.Category, name='Category 2')
@@ -408,7 +432,7 @@ class TestDishByCategoryAction:
         dish3 = baker.make(models.Dish, category=category2, name='Dish 3')
         
         url = reverse('dish-by-category')
-        response = api_client.get(url, {'category_id': category1.id})
+        response = authenticated_api_client.get(url, {'category_id': category1.id})
         
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) == 2
@@ -422,7 +446,7 @@ class TestDishByCategoryAction:
 class TestDishEdgeCases:
     """Tests for edge cases and special scenarios"""
     
-    def test_dish_long_name(self, api_client, category):
+    def test_dish_long_name(self, authenticated_api_client, category):
         """Test creating dish with very long name"""
         url = reverse('dish-list')
         data = {
@@ -430,11 +454,11 @@ class TestDishEdgeCases:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
     
-    def test_dish_name_exceeds_max_length(self, api_client, category):
+    def test_dish_name_exceeds_max_length(self, authenticated_api_client, category):
         """Test creating dish with name exceeding max length"""
         url = reverse('dish-list')
         data = {
@@ -442,11 +466,11 @@ class TestDishEdgeCases:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_400_BAD_REQUEST
     
-    def test_dish_high_price(self, api_client, category):
+    def test_dish_high_price(self, authenticated_api_client, category):
         """Test creating dish with very high price"""
         url = reverse('dish-list')
         data = {
@@ -454,11 +478,11 @@ class TestDishEdgeCases:
             'price': '999999.99',  # High price
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
     
-    def test_dish_decimal_price_precision(self, api_client, category):
+    def test_dish_decimal_price_precision(self, authenticated_api_client, category):
         """Test price with multiple decimal places"""
         url = reverse('dish-list')
         data = {
@@ -466,12 +490,12 @@ class TestDishEdgeCases:
             'price': '19.999',  # More than 2 decimal places
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         # Should either accept or reject based on validation
         assert response.status_code in [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST]
     
-    def test_dish_unicode_characters(self, api_client, category):
+    def test_dish_unicode_characters(self, authenticated_api_client, category):
         """Test creating dish with unicode characters"""
         url = reverse('dish-list')
         data = {
@@ -480,12 +504,12 @@ class TestDishEdgeCases:
             'price': '25.99',
             'category': category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         assert response.status_code == status.HTTP_201_CREATED
         assert 'Plato Español' in response.data['name']
     
-    def test_dish_inactive_category(self, api_client):
+    def test_dish_inactive_category(self, authenticated_api_client):
         """Test creating dish with inactive category"""
         inactive_category = baker.make(models.Category, is_active=False)
         url = reverse('dish-list')
@@ -494,7 +518,7 @@ class TestDishEdgeCases:
             'price': '25.99',
             'category': inactive_category.id
         }
-        response = api_client.post(url, data)
+        response = authenticated_api_client.post(url, data)
         
         # Should succeed (category inactive doesn't prevent dish creation)
         assert response.status_code == status.HTTP_201_CREATED
