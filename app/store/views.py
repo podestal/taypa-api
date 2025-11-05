@@ -111,3 +111,15 @@ class AddressViewSet(viewsets.ModelViewSet):
         addresses = models.Address.objects.filter(customer_id=customer_id)
         serializer = serializers.AddressSerializer(addresses, many=True)
         return Response(serializer.data)
+
+
+class AccountViewSet(viewsets.ModelViewSet):
+    queryset = models.Account.objects.all()
+    serializer_class = serializers.AccountSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class TransactionViewSet(viewsets.ModelViewSet):
+    queryset = models.Transaction.objects.all()
+    serializer_class = serializers.TransactionSerializer
+    permission_classes = [IsAuthenticated]
