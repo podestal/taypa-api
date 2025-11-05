@@ -218,8 +218,8 @@ class Transaction(models.Model):
     """Represents a financial transaction (income or expense)"""
     
     TRANSACTION_TYPE_CHOICES = [
-        ('INCOME', 'Income'),
-        ('EXPENSE', 'Expense'),
+        ('I', 'Income'),
+        ('E', 'Expense'),
     ]
     
     transaction_type = models.CharField(

@@ -1,5 +1,6 @@
 from rest_framework import viewsets
 from . import models, serializers
+from . import pagination
 from rest_framework.decorators import action
 from django.db import connection
 from django.db.models import Prefetch
@@ -123,3 +124,4 @@ class TransactionViewSet(viewsets.ModelViewSet):
     queryset = models.Transaction.objects.all()
     serializer_class = serializers.TransactionSerializer
     # permission_classes = [IsAuthenticated]
+    pagination_class = pagination.SimplePagination
