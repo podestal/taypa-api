@@ -1,3 +1,4 @@
+from datetime import date
 from rest_framework import viewsets
 from . import models, serializers
 from . import pagination
@@ -121,7 +122,17 @@ class AccountViewSet(viewsets.ModelViewSet):
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
-    queryset = models.Transaction.objects.all()
+    queryset = models.Transaction.objects.select_related('account', 'category')
     serializer_class = serializers.TransactionSerializer
     # permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
+
+    @action(detail=False, methods=['get'])
+    def by_current_day(self, request):
+        transactions = self.queryset.filter(transaction_date=date.today())
+        page = self.paginate_queryset(transactions)
+        if page is not None:
+            serializer = serializers.TransactionSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        serializer = serializers.TransactionSerializer(transactions, many=True)
+        return Response(serializer.data)
