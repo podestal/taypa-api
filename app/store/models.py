@@ -5,17 +5,24 @@ from datetime import date, timedelta
 
 
 class Category(models.Model):
+    """
+    Represents a category
+    """
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     is_active = models.BooleanField(default=True)
+    is_menu_category = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
 
 
 class Dish(models.Model):
+    """
+    Represents a dish
+    """
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -29,6 +36,9 @@ class Dish(models.Model):
 
 
 class Customer(models.Model):
+    """
+    Represents a customer
+    """
     first_name = models.CharField(max_length=255)
     last_name = models.CharField(max_length=255)
     phone_number = models.CharField(max_length=255)
@@ -40,6 +50,9 @@ class Customer(models.Model):
 
 
 class Address(models.Model):
+    """
+    Represents an address
+    """
     street = models.CharField(max_length=255)
     reference = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -55,7 +68,9 @@ class Address(models.Model):
 
 
 class Order(models.Model):
-
+    """
+    Represents an order
+    """
     ORDER_STATUS_CHOICES = [
         ('IP', 'In Progress'),
         ('IK', 'In Kitchen'),
@@ -156,6 +171,9 @@ class Order(models.Model):
 
 
 class OrderItem(models.Model):
+    """
+    Represents an item in an order
+    """
     order = models.ForeignKey(Order, on_delete=models.CASCADE)
     dish = models.ForeignKey(Dish, on_delete=models.PROTECT)
     price = models.DecimalField(max_digits=10, decimal_places=2)
@@ -164,3 +182,128 @@ class OrderItem(models.Model):
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+
+class Account(models.Model):
+    """Represents a bank account or savings account"""
+    name = models.CharField(max_length=255, help_text="Account name (e.g., 'Main Bank', 'Savings')")
+    balance = models.DecimalField(
+        max_digits=12, 
+        decimal_places=2, 
+        default=0.00,
+        help_text="Current balance in the account"
+    )
+    account_type = models.CharField(
+        max_length=50,
+        choices=[
+            ('CH', 'Checking'),
+            ('SA', 'Savings'),
+            ('CA', 'Cash'),
+            ('OT', 'Other'),
+        ],
+        default='CH'
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return f"{self.name} - ${self.balance}"
+
+
+class Transaction(models.Model):
+    """Represents a financial transaction (income or expense)"""
+    
+    TRANSACTION_TYPE_CHOICES = [
+        ('INCOME', 'Income'),
+        ('EXPENSE', 'Expense'),
+    ]
+    
+    transaction_type = models.CharField(
+        max_length=10,
+        choices=TRANSACTION_TYPE_CHOICES
+    )
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='transactions'
+    )
+    amount = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text="Transaction amount (always positive)"
+    )
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name='transactions',
+        null=True,
+        blank=True
+    )
+    description = models.TextField(
+        blank=True,
+        help_text="Description or notes about the transaction"
+    )
+    transaction_date = models.DateField(
+        default=date.today,
+        help_text="Date when the transaction occurred"
+    )
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='transactions'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} - ${self.amount} - {self.transaction_date}"
+    
+    def save(self, *args, **kwargs):
+        """
+        Override save to automatically update account balance.
+        This ensures balance is always correct regardless of how transaction is created/updated.
+        """
+        is_new = self.pk is None
+        
+        # If this is a new transaction, update the account balance
+        if is_new:
+            super().save(*args, **kwargs)
+            # Update account balance based on transaction type
+            if self.transaction_type == 'INCOME':
+                self.account.balance += self.amount
+            elif self.transaction_type == 'EXPENSE':
+                self.account.balance -= self.amount
+            self.account.save()
+        else:
+            # For updates, we need to handle balance correction
+            # Get the old transaction to reverse its effect
+            old_transaction = Transaction.objects.get(pk=self.pk)
+            
+            # Reverse old transaction effect
+            if old_transaction.transaction_type == 'INCOME':
+                self.account.balance -= old_transaction.amount
+            elif old_transaction.transaction_type == 'EXPENSE':
+                self.account.balance += old_transaction.amount
+            
+            # Apply new transaction effect
+            if self.transaction_type == 'INCOME':
+                self.account.balance += self.amount
+            elif self.transaction_type == 'EXPENSE':
+                self.account.balance -= self.amount
+            
+            self.account.save()
+            super().save(*args, **kwargs)
+    
+    def delete(self, *args, **kwargs):
+        # Reverse the transaction effect on account balance before deleting
+        if self.transaction_type == 'INCOME':
+            self.account.balance -= self.amount
+        elif self.transaction_type == 'EXPENSE':
+            self.account.balance += self.amount
+        self.account.save()
+        super().delete(*args, **kwargs)
