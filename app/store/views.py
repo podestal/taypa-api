@@ -177,3 +177,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = serializers.TransactionSerializer(transactions, many=True)
         return Response(serializer.data)
+    
+    def perform_create(self, serializer):
+        """Set created_by to the current user"""
+        serializer.save(created_by=self.request.user)

@@ -19,7 +19,7 @@ class TestTransactionListView:
         url = reverse('transaction-list')
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_list_transactions_empty(self, authenticated_api_client):
         """Test listing transactions when none exist"""
@@ -280,7 +280,7 @@ class TestTransactionCreateView:
         }
         response = api_client.post(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_create_transaction_income_success(self, authenticated_api_client, account, user, category):
         """Test creating an income transaction successfully"""
@@ -375,7 +375,7 @@ class TestTransactionDetailView:
         url = reverse('transaction-detail', kwargs={'pk': transaction.id})
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_retrieve_transaction_success(self, authenticated_api_client, transaction):
         """Test retrieving a transaction successfully"""
@@ -405,7 +405,7 @@ class TestTransactionUpdateView:
         data = {'amount': '200.00'}
         response = api_client.patch(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_update_transaction_amount(self, authenticated_api_client, transaction, account):
         """Test updating transaction amount and verify balance correction"""
@@ -486,7 +486,7 @@ class TestTransactionDeleteView:
         url = reverse('transaction-detail', kwargs={'pk': transaction.id})
         response = api_client.delete(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_delete_transaction_income_reverses_balance(self, authenticated_api_client, account, user, category):
         """Test deleting income transaction reverses balance correctly"""

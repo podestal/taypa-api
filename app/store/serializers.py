@@ -157,6 +157,8 @@ class AccountSerializer(serializers.ModelSerializer):
 
 
 class TransactionSerializer(serializers.ModelSerializer):
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    
     class Meta:
         model = models.Transaction
         fields = '__all__'
