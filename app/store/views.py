@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, timedelta
 from rest_framework import viewsets
 from . import models, serializers
 from . import pagination
@@ -124,12 +124,53 @@ class AccountViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = models.Transaction.objects.select_related('account', 'category')
     serializer_class = serializers.TransactionSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
 
-    @action(detail=False, methods=['get'])
-    def by_current_day(self, request):
-        transactions = self.queryset.filter(transaction_date=date.today())
+    def list(self, request, *args, **kwargs):
+        """
+        Filter transactions by date and transaction type.
+        date_filter: 'today' | 'last7days' | 'thisWeek' | 'thisMonth' | 'custom' | 'all'
+        transaction_type: 'I' | 'E' | 'all'
+        """
+        date_filter = request.query_params.get('date_filter', 'today')
+        transaction_type = request.query_params.get('transaction_type', 'all')
+        
+        # Start with base queryset
+        transactions = self.queryset
+        
+        # Filter by transaction type
+        if transaction_type == 'I':
+            transactions = transactions.filter(transaction_type='I')
+        elif transaction_type == 'E':
+            transactions = transactions.filter(transaction_type='E')
+        elif transaction_type != 'all':
+            return Response({'error': 'invalid transaction_type parameter. Use I, E, or all'}, status=400)
+
+        # Filter by date (chain on the already filtered transactions)
+        if date_filter == 'today':
+            transactions = transactions.filter(transaction_date=date.today())
+        elif date_filter == 'last7days':
+            transactions = transactions.filter(transaction_date__gte=date.today() - timedelta(days=7))
+        elif date_filter == 'thisWeek':
+            # Get start of week (Monday)
+            today = date.today()
+            start_of_week = today - timedelta(days=today.weekday())
+            transactions = transactions.filter(transaction_date__gte=start_of_week)
+        elif date_filter == 'thisMonth':
+            # Get start of month
+            today = date.today()
+            start_of_month = today.replace(day=1)
+            transactions = transactions.filter(transaction_date__gte=start_of_month)
+        elif date_filter == 'custom':
+            start_date = request.query_params.get('start_date')
+            end_date = request.query_params.get('end_date')
+            if not start_date or not end_date:
+                return Response({'error': 'start_date and end_date parameters are required for custom filter'}, status=400)
+            transactions = transactions.filter(transaction_date__gte=start_date, transaction_date__lte=end_date)
+        elif date_filter != 'all':
+            return Response({'error': 'invalid date_filter parameter'}, status=400)
+        
         page = self.paginate_queryset(transactions)
         if page is not None:
             serializer = serializers.TransactionSerializer(page, many=True)

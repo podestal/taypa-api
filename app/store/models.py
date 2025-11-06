@@ -274,9 +274,9 @@ class Transaction(models.Model):
         if is_new:
             super().save(*args, **kwargs)
             # Update account balance based on transaction type
-            if self.transaction_type == 'INCOME':
+            if self.transaction_type == 'I':  # Income
                 self.account.balance += self.amount
-            elif self.transaction_type == 'EXPENSE':
+            elif self.transaction_type == 'E':  # Expense
                 self.account.balance -= self.amount
             self.account.save()
         else:
@@ -285,15 +285,15 @@ class Transaction(models.Model):
             old_transaction = Transaction.objects.get(pk=self.pk)
             
             # Reverse old transaction effect
-            if old_transaction.transaction_type == 'INCOME':
+            if old_transaction.transaction_type == 'I':  # Income
                 self.account.balance -= old_transaction.amount
-            elif old_transaction.transaction_type == 'EXPENSE':
+            elif old_transaction.transaction_type == 'E':  # Expense
                 self.account.balance += old_transaction.amount
             
             # Apply new transaction effect
-            if self.transaction_type == 'INCOME':
+            if self.transaction_type == 'I':  # Income
                 self.account.balance += self.amount
-            elif self.transaction_type == 'EXPENSE':
+            elif self.transaction_type == 'E':  # Expense
                 self.account.balance -= self.amount
             
             self.account.save()
@@ -301,9 +301,9 @@ class Transaction(models.Model):
     
     def delete(self, *args, **kwargs):
         # Reverse the transaction effect on account balance before deleting
-        if self.transaction_type == 'INCOME':
+        if self.transaction_type == 'I':  # Income
             self.account.balance -= self.amount
-        elif self.transaction_type == 'EXPENSE':
+        elif self.transaction_type == 'E':  # Expense
             self.account.balance += self.amount
         self.account.save()
         super().delete(*args, **kwargs)
