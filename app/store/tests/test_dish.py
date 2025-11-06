@@ -18,7 +18,7 @@ class TestDishListView:
         url = reverse('dish-list')
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_list_dishes_empty(self, authenticated_api_client):
         """Test listing dishes when none exist"""
@@ -78,7 +78,7 @@ class TestDishCreateView:
         }
         response = api_client.post(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_create_dish_success(self, authenticated_api_client, category):
         """Test creating a dish successfully"""
@@ -211,7 +211,7 @@ class TestDishDetailView:
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_retrieve_dish_success(self, authenticated_api_client, dish):
         """Test retrieving a dish successfully"""
@@ -241,7 +241,7 @@ class TestDishUpdateView:
         data = {'name': 'Updated'}
         response = api_client.patch(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_update_dish_put_success(self, authenticated_api_client, dish):
         """Test full update (PUT) of dish"""
@@ -322,7 +322,7 @@ class TestDishDeleteView:
         url = reverse('dish-detail', kwargs={'pk': dish.id})
         response = api_client.delete(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_delete_dish_success(self, authenticated_api_client, dish):
         """Test deleting a dish successfully"""
@@ -362,7 +362,7 @@ class TestDishByCategoryAction:
         url = reverse('dish-by-category')
         response = api_client.get(url, {'category_id': category.id})
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_by_category_success(self, authenticated_api_client, category):
         """Test getting dishes by category successfully"""

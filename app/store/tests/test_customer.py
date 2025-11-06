@@ -17,7 +17,7 @@ class TestCustomerListView:
         url = reverse('customer-list')
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_list_customers_empty(self, authenticated_api_client):
         """Test listing customers when none exist"""
@@ -76,7 +76,7 @@ class TestCustomerCreateView:
         }
         response = api_client.post(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_create_customer_success(self, authenticated_api_client):
         """Test creating a customer successfully"""
@@ -166,7 +166,7 @@ class TestCustomerDetailView:
         url = reverse('customer-detail', kwargs={'pk': customer.id})
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_retrieve_customer_success(self, authenticated_api_client, customer):
         """Test retrieving a customer successfully"""
@@ -197,7 +197,7 @@ class TestCustomerUpdateView:
         data = {'first_name': 'Updated'}
         response = api_client.patch(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_update_customer_put_success(self, authenticated_api_client, customer):
         """Test full update (PUT) of customer"""
@@ -272,7 +272,7 @@ class TestCustomerDeleteView:
         url = reverse('customer-detail', kwargs={'pk': customer.id})
         response = api_client.delete(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_delete_customer_success(self, authenticated_api_client, customer):
         """Test deleting a customer successfully"""
@@ -318,7 +318,7 @@ class TestCustomerByNameAction:
         url = reverse('customer-by-name')
         response = api_client.get(url, {'name': 'John'})
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_by_name_success_first_name_match(self, authenticated_api_client):
         """Test getting customers by first name"""

@@ -17,7 +17,7 @@ class TestAddressListView:
         url = reverse('address-list')
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_list_addresses_empty(self, authenticated_api_client):
         """Test listing addresses when none exist"""
@@ -76,7 +76,7 @@ class TestAddressCreateView:
         }
         response = api_client.post(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_create_address_success(self, authenticated_api_client, customer):
         """Test creating an address successfully"""
@@ -170,7 +170,7 @@ class TestAddressDetailView:
         url = reverse('address-detail', kwargs={'pk': address.id})
         response = api_client.get(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_retrieve_address_success(self, authenticated_api_client, address):
         """Test retrieving an address successfully"""
@@ -200,7 +200,7 @@ class TestAddressUpdateView:
         data = {'street': 'Updated Street'}
         response = api_client.patch(url, data)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_update_address_put_success(self, authenticated_api_client, address):
         """Test full update (PUT) of address"""
@@ -280,7 +280,7 @@ class TestAddressDeleteView:
         url = reverse('address-detail', kwargs={'pk': address.id})
         response = api_client.delete(url)
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_delete_address_success(self, authenticated_api_client, address):
         """Test deleting an address successfully"""
@@ -321,7 +321,7 @@ class TestAddressByCustomerAction:
         url = reverse('address-by-customer')
         response = api_client.get(url, {'customer_id': customer.id})
         
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
     
     def test_by_customer_success(self, authenticated_api_client, customer):
         """Test getting addresses by customer successfully"""

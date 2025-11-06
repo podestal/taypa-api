@@ -122,7 +122,7 @@ class AccountViewSet(viewsets.ModelViewSet):
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
-    queryset = models.Transaction.objects.select_related('account', 'category')
+    queryset = models.Transaction.objects.select_related('account', 'category').order_by('-transaction_date')
     serializer_class = serializers.TransactionSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
