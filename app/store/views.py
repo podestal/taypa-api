@@ -135,10 +135,17 @@ class TransactionViewSet(viewsets.ModelViewSet):
         """
         date_filter = request.query_params.get('date_filter', 'today')
         transaction_type = request.query_params.get('transaction_type', 'all')
+        sort_by = request.query_params.get('sort_by', 'date')
         
         # Start with base queryset
         transactions = self.queryset
-        
+
+        # Sort by date or amount
+        if sort_by == 'date':
+            transactions = transactions.order_by('-transaction_date')
+        elif sort_by == 'amount':
+            transactions = transactions.order_by('-amount')
+
         # Filter by transaction type
         if transaction_type == 'I':
             transactions = transactions.filter(transaction_type='I')

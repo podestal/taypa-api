@@ -263,6 +263,245 @@ class TestTransactionListView:
         assert len(data) == 1
         assert data[0]['transaction_type'] == 'I'
         assert data[0]['transaction_date'] == str(date.today())
+    
+    def test_list_transactions_sort_by_date_default(self, authenticated_api_client, account, user, category):
+        """Test default sorting by date (descending - newest first)"""
+        # Create transactions with different dates
+        today = date.today()
+        transaction1 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today - timedelta(days=2),
+            created_by=user
+        )
+        transaction2 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('200.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction3 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('150.00'),
+            transaction_date=today - timedelta(days=1),
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {'date_filter': 'all'})
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        assert len(data) == 3
+        
+        # Should be sorted by date descending (newest first)
+        assert data[0]['transaction_date'] == str(today)  # Most recent
+        assert data[1]['transaction_date'] == str(today - timedelta(days=1))
+        assert data[2]['transaction_date'] == str(today - timedelta(days=2))  # Oldest
+    
+    def test_list_transactions_sort_by_date_explicit(self, authenticated_api_client, account, user, category):
+        """Test explicit sorting by date"""
+        today = date.today()
+        transaction1 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today - timedelta(days=2),
+            created_by=user
+        )
+        transaction2 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('200.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction3 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('150.00'),
+            transaction_date=today - timedelta(days=1),
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {
+            'date_filter': 'all',
+            'sort_by': 'date'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        assert len(data) == 3
+        
+        # Should be sorted by date descending (newest first)
+        assert data[0]['transaction_date'] == str(today)
+        assert data[1]['transaction_date'] == str(today - timedelta(days=1))
+        assert data[2]['transaction_date'] == str(today - timedelta(days=2))
+    
+    def test_list_transactions_sort_by_amount(self, authenticated_api_client, account, user, category):
+        """Test sorting by amount (descending - highest first)"""
+        today = date.today()
+        transaction1 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction2 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('500.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction3 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('250.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {
+            'date_filter': 'all',
+            'sort_by': 'amount'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        assert len(data) == 3
+        
+        # Should be sorted by amount descending (highest first)
+        assert Decimal(data[0]['amount']) == Decimal('500.00')
+        assert Decimal(data[1]['amount']) == Decimal('250.00')
+        assert Decimal(data[2]['amount']) == Decimal('100.00')
+    
+    def test_list_transactions_sort_by_amount_with_same_amounts(self, authenticated_api_client, account, user, category):
+        """Test sorting by amount when some amounts are equal"""
+        today = date.today()
+        transaction1 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today - timedelta(days=1),
+            created_by=user
+        )
+        transaction2 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('200.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction3 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {
+            'date_filter': 'all',
+            'sort_by': 'amount'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        assert len(data) == 3
+        
+        # Should be sorted by amount descending
+        assert Decimal(data[0]['amount']) == Decimal('200.00')
+        # Both 100.00 amounts should be present
+        amounts = [Decimal(t['amount']) for t in data]
+        assert Decimal('200.00') in amounts
+        assert amounts.count(Decimal('100.00')) == 2
+    
+    def test_list_transactions_sort_by_invalid(self, authenticated_api_client, account, user, category):
+        """Test sorting with invalid sort_by parameter"""
+        baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {
+            'date_filter': 'all',
+            'sort_by': 'invalid'
+        })
+        
+        # Currently, invalid sort_by doesn't return an error, it just doesn't apply sorting
+        # This test documents the current behavior
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        assert len(data) >= 1
+    
+    def test_list_transactions_sort_combined_with_filters(self, authenticated_api_client, account, user, category):
+        """Test sorting combined with transaction_type and date filters"""
+        today = date.today()
+        # Create income transactions with different amounts
+        transaction1 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('100.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        transaction2 = baker.make(
+            models.Transaction,
+            transaction_type='I',
+            account=account,
+            amount=Decimal('300.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        # Create expense transaction (should be filtered out)
+        transaction3 = baker.make(
+            models.Transaction,
+            transaction_type='E',
+            account=account,
+            amount=Decimal('500.00'),
+            transaction_date=today,
+            created_by=user
+        )
+        
+        url = reverse('transaction-list')
+        response = authenticated_api_client.get(url, {
+            'transaction_type': 'I',
+            'date_filter': 'today',
+            'sort_by': 'amount'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        # Should only return income transactions, sorted by amount
+        assert len(data) == 2
+        assert all(t['transaction_type'] == 'I' for t in data)
+        assert Decimal(data[0]['amount']) == Decimal('300.00')
+        assert Decimal(data[1]['amount']) == Decimal('100.00')
 
 
 @pytest.mark.django_db
