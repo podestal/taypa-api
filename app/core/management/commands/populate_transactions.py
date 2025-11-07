@@ -38,7 +38,11 @@ class Command(BaseCommand):
             return
 
         # Get or create categories
-        categories = Category.objects.all()
+        categories = list(Category.objects.all())
+        if not categories:
+            self.stdout.write(self.style.ERROR('No categories found. Please create categories first.'))
+            return
+
 
         # Income and expense descriptions
         income_descriptions = [
@@ -104,8 +108,8 @@ class Command(BaseCommand):
                     description = random.choice(expense_descriptions)
                     total_expenses += amount
                 
-                # Random category
-                category = random.choice(categories) if random.random() < 0.8 else None
+                # Always assign a category
+                category = random.choice(categories)
                 
                 # Create transaction (balance will be updated automatically by save method)
                 Transaction.objects.create(
