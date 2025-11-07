@@ -38,14 +38,7 @@ class Command(BaseCommand):
             return
 
         # Get or create categories
-        categories = []
-        category_names = ['Food', 'Transport', 'Utilities', 'Shopping', 'Entertainment', 'Salary', 'Freelance', 'Other']
-        for name in category_names:
-            category, _ = Category.objects.get_or_create(
-                name=name,
-                defaults={'description': f'Category for {name}'}
-            )
-            categories.append(category)
+        categories = Category.objects.all()
 
         # Income and expense descriptions
         income_descriptions = [
@@ -111,8 +104,8 @@ class Command(BaseCommand):
                     description = random.choice(expense_descriptions)
                     total_expenses += amount
                 
-                # Random category (can be None sometimes)
-                category = random.choice(categories + [None]) if random.random() < 0.8 else None
+                # Random category
+                category = random.choice(categories) if random.random() < 0.8 else None
                 
                 # Create transaction (balance will be updated automatically by save method)
                 Transaction.objects.create(

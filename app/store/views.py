@@ -132,6 +132,7 @@ class TransactionViewSet(viewsets.ModelViewSet):
         Filter transactions by date and transaction type.
         date_filter: 'today' | 'last7days' | 'thisWeek' | 'thisMonth' | 'custom' | 'all'
         transaction_type: 'I' | 'E' | 'all'
+        sort_by: 'date' | 'amount'
         """
         date_filter = request.query_params.get('date_filter', 'today')
         transaction_type = request.query_params.get('transaction_type', 'all')
