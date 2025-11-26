@@ -43,6 +43,7 @@ INSTALLED_APPS = [
     'djoser',
     'core',
     'store',
+    'taxes',
 ]
 
 MIDDLEWARE = [
