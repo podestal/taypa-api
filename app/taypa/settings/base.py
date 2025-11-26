@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 from datetime import timedelta
+import os
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -143,3 +144,8 @@ SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
+
+# Sunat API Configuration
+SUNAT_API_URL = os.environ.get('SUNAT_API_URL', 'https://apisunat.com/api/documents/')
+SUNAT_PERSONA_ID = os.environ.get('SUNAT_PERSONA_ID')
+SUNAT_PERSONA_TOKEN = os.environ.get('SUNAT_PERSONA_TOKEN')
