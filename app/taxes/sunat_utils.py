@@ -131,21 +131,42 @@ def get_item_list(order_items: List[Dict]) -> List[Dict]:
     Returns:
         List of invoice line dictionaries in Sunat format
     """
-    item_list = []
+    # First, calculate total to avoid rounding errors
+    total_with_igv = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
     
-    for item in order_items:
+    # Calculate base and tax from total (avoid rounding until the end)
+    base_total = total_with_igv / 1.18
+    tax_total = base_total * 0.18
+    
+    item_list = []
+    accumulated_base = 0
+    accumulated_tax = 0
+    
+    for idx, item in enumerate(order_items):
         item_id = str(item.get('id', ''))
         quantity = float(item.get('quantity', 0))
         cost_with_igv = float(item.get('cost', 0))  # Price already includes IGV
         name = item.get('name', '')
         
-        # Extract base price (without IGV) from price that includes IGV
-        # Formula: base_price = price_with_igv / 1.18
-        base_cost = round(cost_with_igv / 1.18, 2)
+        # Calculate item line total
+        item_total_with_igv = quantity * cost_with_igv
         
-        # Calculate line amounts
-        line_extension = round(quantity * base_cost, 2)  # Base amount without IGV
-        tax_amount = round(line_extension * 0.18, 2)  # IGV from base
+        # Calculate proportional base and tax
+        if idx == len(order_items) - 1:
+            # Last item: use remaining amount to avoid rounding errors
+            line_extension = round(base_total - accumulated_base, 2)
+            tax_amount = round(tax_total - accumulated_tax, 2)
+        else:
+            # Calculate proportionally
+            proportion = item_total_with_igv / total_with_igv
+            line_extension = round(base_total * proportion, 2)
+            tax_amount = round(tax_total * proportion, 2)
+        
+        accumulated_base += line_extension
+        accumulated_tax += tax_amount
+        
+        # Base cost per unit (for display in XML)
+        base_cost = round(line_extension / quantity, 2) if quantity > 0 else 0
         price_with_tax = cost_with_igv  # Original price already includes IGV
         
         invoice_line = {
@@ -264,15 +285,21 @@ def generate_invoice_data(
     Returns:
         Dictionary with invoice data ready for Sunat API
     """
-    # Calculate totals
-    # Note: cost already includes IGV, so we need to extract base prices
-    total_with_igv = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
-    # Extract base (subtotal without IGV): base = total_with_igv / 1.18
-    sub_total = round(total_with_igv / 1.18, 2)
-    taxes = round(sub_total * 0.18, 2)
-    total = round(sub_total + taxes, 2)  # Should equal total_with_igv (with rounding)
+    # Calculate totals - avoid rounding errors
+    # Note: cost already includes IGV
+    total_with_igv = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
+    # Calculate precisely first, round only at the end
+    sub_total = total_with_igv / 1.18
+    taxes = sub_total * 0.18
+    total = sub_total + taxes  # Should equal total_with_igv exactly
     
-    # Get item list
+    # Round only final values
+    sub_total = round(sub_total, 2)
+    taxes = round(taxes, 2)
+    # Use original total_with_igv to avoid rounding errors - this is exactly what user sent
+    total = round(total_with_igv, 2)
+    
+    # Get item list (uses same totals calculation internally)
     item_list = get_item_list(order_items)
     
     # Current date and time
@@ -410,15 +437,21 @@ def generate_ticket_data(
     Returns:
         Dictionary with ticket data ready for Sunat API
     """
-    # Calculate totals
-    # Note: cost already includes IGV, so we need to extract base prices
-    total_with_igv = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
-    # Extract base (subtotal without IGV): base = total_with_igv / 1.18
-    sub_total = round(total_with_igv / 1.18, 2)
-    taxes = round(sub_total * 0.18, 2)
-    total = round(sub_total + taxes, 2)  # Should equal total_with_igv (with rounding)
+    # Calculate totals - avoid rounding errors
+    # Note: cost already includes IGV
+    total_with_igv = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
+    # Calculate precisely first, round only at the end
+    sub_total = total_with_igv / 1.18
+    taxes = sub_total * 0.18
+    total = sub_total + taxes  # Should equal total_with_igv exactly
     
-    # Get item list
+    # Round only final values
+    sub_total = round(sub_total, 2)
+    taxes = round(taxes, 2)
+    # Use original total_with_igv to avoid rounding errors - this is exactly what user sent
+    total = round(total_with_igv, 2)
+    
+    # Get item list (uses same totals calculation internally)
     item_list = get_item_list(order_items)
     
     # Current date and time

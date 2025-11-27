@@ -1,4 +1,5 @@
 import requests
+from decimal import Decimal
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -26,7 +27,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     pagination_class = SimplePagination
 
     @action(detail=False, methods=['get'], url_path='get-tickets')
-    def get_ticket(self, request):
+    def get_tickets(self, request):
         """
         Fetch a ticket from Sunat API
         """
@@ -260,30 +261,27 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Map sendBill response to expected format
-            # sendBill returns: {"status": "PENDIENTE", "documentId": "..."}
-            # We need to map it to format expected by sync_from_sunat
-            document_data = {
-                'id': sunat_response.get('documentId'),  # Map documentId to id
-                'status': sunat_response.get('status', 'PENDIENTE'),
-                'type': invoice_data.get('documentBody', {}).get('cbc:InvoiceTypeCode', {}).get('_text', '01'),
-                'fileName': invoice_data.get('fileName', ''),
-                'serie': '',
-                'numero': '',
-            }
+            # Create document in database
+            fileName = invoice_data.get('fileName', '')
             
-            # Parse fileName to extract serie and numero
-            # Format: 20482674828-01-F001-00000001
-            if document_data['fileName']:
-                parts = document_data['fileName'].split('-')
-                if len(parts) >= 4:
-                    document_data['serie'] = parts[2]  # F001
-                    document_data['numero'] = parts[3]  # 00000001
+            # Parse fileName: 20482674828-01-F001-00000001
+            parts = fileName.split('-')
+            serie = parts[2] if len(parts) >= 4 else ''
+            numero = parts[3] if len(parts) >= 4 else ''
             
-            # Save to database (basic info, will be updated when sync runs)
-            # Note: XML won't be available immediately, so we can't extract amount yet
-            processed_data = {'xml_processed': False}
-            document = Document.sync_from_sunat(document_data, processed_data)
+            # Calculate total from order items (exactly what user sent)
+            total_amount = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
+            
+            # Create document
+            document = Document.objects.create(
+                sunat_id=sunat_response.get('documentId'),
+                document_type='01',
+                serie=serie,
+                numero=numero,
+                sunat_status='PENDIENTE',
+                status='pending',
+                amount=Decimal(str(total_amount)),
+            )
             
             # Return created document
             doc_serializer = DocumentSerializer(document)
@@ -375,30 +373,27 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST
                 )
             
-            # Map sendBill response to expected format
-            # sendBill returns: {"status": "PENDIENTE", "documentId": "..."}
-            # We need to map it to format expected by sync_from_sunat
-            document_data = {
-                'id': sunat_response.get('documentId'),  # Map documentId to id
-                'status': sunat_response.get('status', 'PENDIENTE'),
-                'type': ticket_data.get('documentBody', {}).get('cbc:InvoiceTypeCode', {}).get('_text', '03'),
-                'fileName': ticket_data.get('fileName', ''),
-                'serie': '',
-                'numero': '',
-            }
+            # Create document in database
+            fileName = ticket_data.get('fileName', '')
             
-            # Parse fileName to extract serie and numero
-            # Format: 20482674828-03-B001-00000001
-            if document_data['fileName']:
-                parts = document_data['fileName'].split('-')
-                if len(parts) >= 4:
-                    document_data['serie'] = parts[2]  # B001
-                    document_data['numero'] = parts[3]  # 00000001
+            # Parse fileName: 20482674828-03-B001-00000001
+            parts = fileName.split('-')
+            serie = parts[2] if len(parts) >= 4 else ''
+            numero = parts[3] if len(parts) >= 4 else ''
             
-            # Save to database (basic info, will be updated when sync runs)
-            # Note: XML won't be available immediately, so we can't extract amount yet
-            processed_data = {'xml_processed': False}
-            document = Document.sync_from_sunat(document_data, processed_data)
+            # Calculate total from order items (exactly what user sent)
+            total_amount = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
+            
+            # Create document
+            document = Document.objects.create(
+                sunat_id=sunat_response.get('documentId'),
+                document_type='03',
+                serie=serie,
+                numero=numero,
+                sunat_status='PENDIENTE',
+                status='pending',
+                amount=Decimal(str(total_amount)),
+            )
             
             # Return created document
             doc_serializer = DocumentSerializer(document)
