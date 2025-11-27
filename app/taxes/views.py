@@ -27,6 +27,17 @@ class DocumentViewSet(viewsets.ModelViewSet):
         serializer = DocumentSerializer(documents_page, many=True)
         return self.get_paginated_response(serializer.data)
 
+
+    @action(detail=False, methods=['get'], url_path='get-invoices')
+    def get_invoices(self, request):
+        """
+        Fetch invoices from Sunat API
+        """
+        documents = Document.objects.filter(document_type='01')
+        documents_page = self.paginate_queryset(documents)
+        serializer = DocumentSerializer(documents_page, many=True)
+        return self.get_paginated_response(serializer.data)
+
     @action(detail=False, methods=['get'], url_path='get-all')
     def get_documents(self, request):
         """
