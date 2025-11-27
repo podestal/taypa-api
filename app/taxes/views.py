@@ -7,11 +7,25 @@ from django.conf import settings
 from .models import Document
 from .serializers import DocumentSerializer
 from .services import process_sunat_document
+from rest_framework.pagination import BasePagination
+from .pagination import SimplePagination
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
     queryset = Document.objects.all()
     serializer_class = DocumentSerializer
+    pagination_class = SimplePagination
+
+    @action(detail=False, methods=['get'], url_path='get-tickets')
+    def get_ticket(self, request):
+        """
+        Fetch a ticket from Sunat API
+        """
+        documents = Document.objects.filter(document_type='03')
+        
+        documents_page = self.paginate_queryset(documents)
+        serializer = DocumentSerializer(documents_page, many=True)
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='get-all')
     def get_documents(self, request):
@@ -45,7 +59,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
             
             # Raise an exception for bad status codes
             response.raise_for_status()
-            
+            serializer = DocumentSerializer(response.json())
+
             # Return the response data as-is
             return Response(response.json(), status=status.HTTP_200_OK)
             
