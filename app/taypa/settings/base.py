@@ -147,5 +147,6 @@ SIMPLE_JWT = {
 
 # Sunat API Configuration
 SUNAT_API_URL = os.environ.get('SUNAT_API_URL', 'https://apisunat.com/api/documents/')
+SUNAT_DOCUMENTS_URL = os.environ.get('SUNAT_DOCUMENTS_URL', 'https://apisunat.com/api/documents/')
 SUNAT_PERSONA_ID = os.environ.get('SUNAT_PERSONA_ID')
 SUNAT_PERSONA_TOKEN = os.environ.get('SUNAT_PERSONA_TOKEN')

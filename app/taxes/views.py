@@ -5,8 +5,17 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 from .models import Document
-from .serializers import DocumentSerializer
+from .serializers import (
+    DocumentSerializer,
+    CreateInvoiceSerializer,
+    CreateTicketSerializer
+)
 from .services import process_sunat_document
+from .sunat_utils import (
+    get_correlative,
+    generate_invoice_data,
+    generate_ticket_data
+)
 from rest_framework.pagination import BasePagination
 from .pagination import SimplePagination
 
@@ -164,6 +173,240 @@ class DocumentViewSet(viewsets.ModelViewSet):
         except requests.exceptions.RequestException as e:
             return Response(
                 {'error': f'Failed to fetch documents from Sunat API: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Unexpected error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='create-invoice')
+    def create_invoice(self, request):
+        """
+        Create an invoice (factura) in Sunat
+        
+        Request body:
+        {
+            "order_items": [
+                {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 50.00}
+            ],
+            "ruc": "20123456789",
+            "address": "Av. Principal 123"
+        }
+        """
+        serializer = CreateInvoiceSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        persona_id = settings.SUNAT_PERSONA_ID
+        persona_token = settings.SUNAT_PERSONA_TOKEN
+        
+        if not persona_id or not persona_token:
+            return Response(
+                {'error': 'Sunat API credentials not configured'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        try:
+            # Get next correlative number
+            correlative = get_correlative('I')
+            if not correlative:
+                return Response(
+                    {'error': 'Failed to get correlative number from Sunat'},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            # Generate invoice data
+            order_items = serializer.validated_data['order_items']
+            invoice_data = generate_invoice_data(
+                correlative=correlative,
+                order_items=[dict(item) for item in order_items],
+                ruc=serializer.validated_data['ruc'],
+                address=serializer.validated_data['address']
+            )
+            
+            # Send to Sunat API
+            # According to docs: POST /personas/v1/sendBill
+            send_bill_url = "https://back.apisunat.com/personas/v1/sendBill"
+            response = requests.post(
+                send_bill_url,
+                json=invoice_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            # Check response
+            if response.status_code not in [200, 201]:
+                return Response(
+                    {
+                        'error': f'Failed to create invoice in Sunat',
+                        'status_code': response.status_code,
+                        'response': response.text[:500],
+                        'endpoint_used': send_bill_url,
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            sunat_response = response.json()
+            
+            # Check if Sunat returned an error
+            if sunat_response.get('status') == 'ERROR':
+                return Response(
+                    {
+                        'error': 'Sunat API returned an error',
+                        'sunat_error': sunat_response.get('error', {}),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Map sendBill response to expected format
+            # sendBill returns: {"status": "PENDIENTE", "documentId": "..."}
+            # We need to map it to format expected by sync_from_sunat
+            document_data = {
+                'id': sunat_response.get('documentId'),  # Map documentId to id
+                'status': sunat_response.get('status', 'PENDIENTE'),
+                'type': invoice_data.get('documentBody', {}).get('cbc:InvoiceTypeCode', {}).get('_text', '01'),
+                'fileName': invoice_data.get('fileName', ''),
+                'serie': '',
+                'numero': '',
+            }
+            
+            # Parse fileName to extract serie and numero
+            # Format: 20482674828-01-F001-00000001
+            if document_data['fileName']:
+                parts = document_data['fileName'].split('-')
+                if len(parts) >= 4:
+                    document_data['serie'] = parts[2]  # F001
+                    document_data['numero'] = parts[3]  # 00000001
+            
+            # Save to database (basic info, will be updated when sync runs)
+            # Note: XML won't be available immediately, so we can't extract amount yet
+            processed_data = {'xml_processed': False}
+            document = Document.sync_from_sunat(document_data, processed_data)
+            
+            # Return created document
+            doc_serializer = DocumentSerializer(document)
+            return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
+            
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {'error': f'Failed to create invoice in Sunat: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Unexpected error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='create-ticket')
+    def create_ticket(self, request):
+        """
+        Create a ticket (boleta) in Sunat
+        
+        Request body:
+        {
+            "order_items": [
+                {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 50.00}
+            ]
+        }
+        """
+        serializer = CreateTicketSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        persona_id = settings.SUNAT_PERSONA_ID
+        persona_token = settings.SUNAT_PERSONA_TOKEN
+        
+        if not persona_id or not persona_token:
+            return Response(
+                {'error': 'Sunat API credentials not configured'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        
+        try:
+            # Get next correlative number
+            correlative = get_correlative('T')
+            if not correlative:
+                return Response(
+                    {'error': 'Failed to get correlative number from Sunat'},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            # Generate ticket data
+            order_items = serializer.validated_data['order_items']
+            ticket_data = generate_ticket_data(
+                correlative=correlative,
+                order_items=[dict(item) for item in order_items]
+            )
+            
+            # Send to Sunat API
+            # According to docs: POST /personas/v1/sendBill
+            send_bill_url = "https://back.apisunat.com/personas/v1/sendBill"
+            response = requests.post(
+                send_bill_url,
+                json=ticket_data,
+                headers={'Content-Type': 'application/json'},
+                timeout=30
+            )
+            
+            # Check response
+            if response.status_code not in [200, 201]:
+                return Response(
+                    {
+                        'error': f'Failed to create ticket in Sunat',
+                        'status_code': response.status_code,
+                        'response': response.text[:500],
+                        'endpoint_used': send_bill_url,
+                    },
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            sunat_response = response.json()
+            
+            # Check if Sunat returned an error
+            if sunat_response.get('status') == 'ERROR':
+                return Response(
+                    {
+                        'error': 'Sunat API returned an error',
+                        'sunat_error': sunat_response.get('error', {}),
+                    },
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Map sendBill response to expected format
+            # sendBill returns: {"status": "PENDIENTE", "documentId": "..."}
+            # We need to map it to format expected by sync_from_sunat
+            document_data = {
+                'id': sunat_response.get('documentId'),  # Map documentId to id
+                'status': sunat_response.get('status', 'PENDIENTE'),
+                'type': ticket_data.get('documentBody', {}).get('cbc:InvoiceTypeCode', {}).get('_text', '03'),
+                'fileName': ticket_data.get('fileName', ''),
+                'serie': '',
+                'numero': '',
+            }
+            
+            # Parse fileName to extract serie and numero
+            # Format: 20482674828-03-B001-00000001
+            if document_data['fileName']:
+                parts = document_data['fileName'].split('-')
+                if len(parts) >= 4:
+                    document_data['serie'] = parts[2]  # B001
+                    document_data['numero'] = parts[3]  # 00000001
+            
+            # Save to database (basic info, will be updated when sync runs)
+            # Note: XML won't be available immediately, so we can't extract amount yet
+            processed_data = {'xml_processed': False}
+            document = Document.sync_from_sunat(document_data, processed_data)
+            
+            # Return created document
+            doc_serializer = DocumentSerializer(document)
+            return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
+            
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {'error': f'Failed to create ticket in Sunat: {str(e)}'},
                 status=status.HTTP_502_BAD_GATEWAY
             )
         except Exception as e:
