@@ -126,6 +126,7 @@ def get_item_list(order_items: List[Dict]) -> List[Dict]:
     
     Args:
         order_items: List of items with keys: id, name, quantity, cost
+        Note: cost should be the price WITH IGV already included
         
     Returns:
         List of invoice line dictionaries in Sunat format
@@ -135,12 +136,17 @@ def get_item_list(order_items: List[Dict]) -> List[Dict]:
     for item in order_items:
         item_id = str(item.get('id', ''))
         quantity = float(item.get('quantity', 0))
-        cost = float(item.get('cost', 0))
+        cost_with_igv = float(item.get('cost', 0))  # Price already includes IGV
         name = item.get('name', '')
         
-        line_extension = round(quantity * cost, 2)
-        tax_amount = round(line_extension * 0.18, 2)
-        price_with_tax = round(cost * 1.18, 2)
+        # Extract base price (without IGV) from price that includes IGV
+        # Formula: base_price = price_with_igv / 1.18
+        base_cost = round(cost_with_igv / 1.18, 2)
+        
+        # Calculate line amounts
+        line_extension = round(quantity * base_cost, 2)  # Base amount without IGV
+        tax_amount = round(line_extension * 0.18, 2)  # IGV from base
+        price_with_tax = cost_with_igv  # Original price already includes IGV
         
         invoice_line = {
             "cbc:ID": {
@@ -224,7 +230,7 @@ def get_item_list(order_items: List[Dict]) -> List[Dict]:
                     "_attributes": {
                         "currencyID": "PEN"
                     },
-                    "_text": cost
+                    "_text": base_cost  # Base price without IGV
                 }
             }
         }
@@ -259,9 +265,12 @@ def generate_invoice_data(
         Dictionary with invoice data ready for Sunat API
     """
     # Calculate totals
-    sub_total = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
+    # Note: cost already includes IGV, so we need to extract base prices
+    total_with_igv = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
+    # Extract base (subtotal without IGV): base = total_with_igv / 1.18
+    sub_total = round(total_with_igv / 1.18, 2)
     taxes = round(sub_total * 0.18, 2)
-    total = round(sub_total + taxes, 2)
+    total = round(sub_total + taxes, 2)  # Should equal total_with_igv (with rounding)
     
     # Get item list
     item_list = get_item_list(order_items)
@@ -402,9 +411,12 @@ def generate_ticket_data(
         Dictionary with ticket data ready for Sunat API
     """
     # Calculate totals
-    sub_total = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
+    # Note: cost already includes IGV, so we need to extract base prices
+    total_with_igv = round(sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items), 2)
+    # Extract base (subtotal without IGV): base = total_with_igv / 1.18
+    sub_total = round(total_with_igv / 1.18, 2)
     taxes = round(sub_total * 0.18, 2)
-    total = round(sub_total + taxes, 2)
+    total = round(sub_total + taxes, 2)  # Should equal total_with_igv (with rounding)
     
     # Get item list
     item_list = get_item_list(order_items)

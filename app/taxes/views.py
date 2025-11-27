@@ -21,7 +21,7 @@ from .pagination import SimplePagination
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
-    queryset = Document.objects.all()
+    queryset = Document.objects.order_by('-created_at')
     serializer_class = DocumentSerializer
     pagination_class = SimplePagination
 
