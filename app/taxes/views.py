@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
 from django.db.models import F, Case, When, IntegerField
+from django.core.exceptions import ObjectDoesNotExist
 from .models import Document
 from .serializers import (
     DocumentSerializer,
@@ -215,7 +216,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 50.00}
             ],
             "ruc": "20123456789",
-            "address": "Av. Principal 123"
+            "address": "Av. Principal 123",
+            "order_id": 123  // Optional: Link the created document to an order
         }
         """
         serializer = CreateInvoiceSerializer(data=request.data)
@@ -309,6 +311,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 sunat_issue_time=current_timestamp,
             )
             
+            # Update order with document if order_id is provided
+            order_id = serializer.validated_data.get('order_id')
+            if order_id:
+                try:
+                    from store.models import Order
+                    order = Order.objects.get(id=order_id)
+                    order.document = document
+                    order.save()
+                except ObjectDoesNotExist:
+                    # Order doesn't exist, but document was created successfully
+                    # Don't fail the request, just log or ignore
+                    pass
+            
             # Return created document
             doc_serializer = DocumentSerializer(document)
             return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
@@ -333,7 +348,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
         {
             "order_items": [
                 {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 50.00}
-            ]
+            ],
+            "order_id": 123  // Optional: Link the created document to an order
         }
         """
         serializer = CreateTicketSerializer(data=request.data)
@@ -424,6 +440,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 amount=Decimal(str(total_amount)),
                 sunat_issue_time=current_timestamp,
             )
+            
+            # Update order with document if order_id is provided
+            order_id = serializer.validated_data.get('order_id')
+            if order_id:
+                try:
+                    from store.models import Order
+                    order = Order.objects.get(id=order_id)
+                    order.document = document
+                    order.save()
+                except ObjectDoesNotExist:
+                    # Order doesn't exist, but document was created successfully
+                    # Don't fail the request, just log or ignore
+                    pass
             
             # Return created document
             doc_serializer = DocumentSerializer(document)

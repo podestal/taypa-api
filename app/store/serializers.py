@@ -198,7 +198,7 @@ class OrderForBillingSerializer(serializers.ModelSerializer):
         return [
             {
                 'id': str(item.dish.id) if item.dish else str(item.id),
-                'name': item.dish.name if item.dish else 'Producto',
+                'name': f"{item.dish.category.name} - {item.dish.name}" if item.dish and item.dish.category else 'Producto',
                 'quantity': item.quantity,
                 'cost': float(item.price),  # Price already includes IGV
             }

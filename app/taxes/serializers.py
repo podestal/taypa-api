@@ -15,11 +15,13 @@ class CreateInvoiceSerializer(serializers.Serializer):
     order_items = OrderItemSerializer(many=True)
     ruc = serializers.CharField()
     address = serializers.CharField()
+    order_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class CreateTicketSerializer(serializers.Serializer):
     """Serializer for creating tickets"""
     order_items = OrderItemSerializer(many=True)
+    order_id = serializers.IntegerField(required=False, allow_null=True)
 
 
 class DocumentSerializer(serializers.ModelSerializer):
