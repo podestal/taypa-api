@@ -162,3 +162,78 @@ class TransactionSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Transaction
         fields = '__all__'
+
+
+class OrderForBillingSerializer(serializers.ModelSerializer):
+    """Serializer for orders in billing view - includes all info needed for Sunat document creation"""
+    order_items = serializers.SerializerMethodField()
+    total_amount = serializers.SerializerMethodField()
+    customer_name = serializers.SerializerMethodField()
+    customer_phone = serializers.SerializerMethodField()
+    customer_ruc = serializers.SerializerMethodField()
+    customer_address = serializers.SerializerMethodField()
+    has_document = serializers.SerializerMethodField()
+    
+    class Meta:
+        model = models.Order
+        fields = [
+            'id',
+            'order_number',
+            'status',
+            'created_at',
+            'order_type',
+            'customer_name',
+            'customer_phone',
+            'customer_ruc',
+            'customer_address',
+            'order_items',
+            'total_amount',
+            'has_document',
+            'document',  # Document ID if exists
+        ]
+    
+    def get_order_items(self, obj):
+        """Format order items for Sunat document creation"""
+        items = obj.orderitem_set.all()
+        return [
+            {
+                'id': str(item.dish.id) if item.dish else str(item.id),
+                'name': item.dish.name if item.dish else 'Producto',
+                'quantity': item.quantity,
+                'cost': float(item.price),  # Price already includes IGV
+            }
+            for item in items
+        ]
+    
+    def get_total_amount(self, obj):
+        """Calculate total amount from order items"""
+        items = obj.orderitem_set.all()
+        return float(sum(item.price * item.quantity for item in items))
+    
+    def get_customer_name(self, obj):
+        """Return customer full name"""
+        if obj.customer:
+            return f"{obj.customer.first_name} {obj.customer.last_name}"
+        return ""
+    
+    def get_customer_phone(self, obj):
+        """Return customer phone"""
+        if obj.customer:
+            return obj.customer.phone_number
+        return ""
+    
+    def get_customer_ruc(self, obj):
+        """Return customer RUC (if available)"""
+        # TODO: Add RUC field to Customer model if needed
+        # For now, return empty string
+        return ""
+    
+    def get_customer_address(self, obj):
+        """Return customer address"""
+        if obj.address:
+            return f"{obj.address.street} - {obj.address.reference}"
+        return ""
+    
+    def get_has_document(self, obj):
+        """Check if order already has a Sunat document"""
+        return obj.document is not None

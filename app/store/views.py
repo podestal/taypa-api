@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from rest_framework import viewsets
 from . import models, serializers
 from . import pagination
@@ -8,6 +8,7 @@ from django.db.models import Prefetch
 from rest_framework.response import Response
 from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
+from django.utils.dateparse import parse_date
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -36,6 +37,7 @@ class OrderViewSet(viewsets.ModelViewSet):
     queryset = models.Order.objects.all()
     serializer_class = serializers.OrderSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = pagination.SimplePagination
 
     @action(detail=False, methods=['get'])
     def in_kitchen(self, request):
@@ -64,6 +66,76 @@ class OrderViewSet(viewsets.ModelViewSet):
             )
         )
         serializer = serializers.GetOrderByStatusSerializer(orders, many=True)
+        return Response(serializer.data)
+
+    
+    @action(detail=False, methods=['get'], url_path='for-billing')
+    def for_billing(self, request):
+        """
+        Get orders for billing with filters and pagination.
+        Filters:
+        - status: Filter by order status (IP, IK, PA, HA, IT, DO, CA)
+        - date: Filter by specific date (YYYY-MM-DD)
+        - start_date: Start date for date range (YYYY-MM-DD)
+        - end_date: End date for date range (YYYY-MM-DD)
+        """
+        # Start with base queryset - prefetch related data for performance
+        orders = models.Order.objects.select_related(
+            'customer', 'address', 'document'
+        ).prefetch_related(
+            Prefetch(
+                'orderitem_set',
+                queryset=models.OrderItem.objects.select_related('dish', 'category')
+            )
+        ).order_by('-created_at')
+        
+        # Filter by status
+        status = request.query_params.get('status')
+        if status:
+            if status not in dict(models.Order.ORDER_STATUS_CHOICES):
+                return Response(
+                    {'error': f'Invalid status. Valid options: {", ".join([s[0] for s in models.Order.ORDER_STATUS_CHOICES])}'},
+                    status=400
+                )
+            orders = orders.filter(status=status)
+        
+        # Filter by date (single day)
+        date_filter = request.query_params.get('date')
+        if date_filter:
+            try:
+                filter_date = parse_date(date_filter)
+                if not filter_date:
+                    return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+                orders = orders.filter(created_at__date=filter_date)
+            except ValueError:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        
+        # Filter by date range
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
+        
+        if start_date and end_date:
+            try:
+                start = parse_date(start_date)
+                end = parse_date(end_date)
+                if not start or not end:
+                    return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+                if start > end:
+                    return Response({'error': 'start_date must be before or equal to end_date'}, status=400)
+                orders = orders.filter(created_at__date__gte=start, created_at__date__lte=end)
+            except ValueError:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+        elif start_date or end_date:
+            return Response({'error': 'Both start_date and end_date are required for date range filter'}, status=400)
+        
+        # Paginate results
+        page = self.paginate_queryset(orders)
+        if page is not None:
+            serializer = serializers.OrderForBillingSerializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        # If no pagination, return all results
+        serializer = serializers.OrderForBillingSerializer(orders, many=True)
         return Response(serializer.data)
 
 
