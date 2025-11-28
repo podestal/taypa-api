@@ -1,10 +1,12 @@
 import requests
 from decimal import Decimal
+from datetime import datetime
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
+from django.db.models import F, Case, When, IntegerField
 from .models import Document
 from .serializers import (
     DocumentSerializer,
@@ -22,16 +24,29 @@ from .pagination import SimplePagination
 
 
 class DocumentViewSet(viewsets.ModelViewSet):
-    queryset = Document.objects.order_by('-created_at')
+    # Order by: NULL sunat_issue_time first (newest), then by sunat_issue_time DESC, then created_at DESC
+    queryset = Document.objects.annotate(
+        sort_priority=Case(
+            When(sunat_issue_time__isnull=True, then=0),  # NULL = highest priority (newest)
+            default=1,  # Has value = lower priority
+            output_field=IntegerField()
+        )
+    ).order_by('sort_priority', '-sunat_issue_time', '-created_at')
     serializer_class = DocumentSerializer
     pagination_class = SimplePagination
 
     @action(detail=False, methods=['get'], url_path='get-tickets')
     def get_tickets(self, request):
         """
-        Fetch a ticket from Sunat API
+        Fetch tickets from database
         """
-        documents = Document.objects.filter(document_type='03')
+        documents = Document.objects.filter(document_type='03').annotate(
+            sort_priority=Case(
+                When(sunat_issue_time__isnull=True, then=0),  # NULL = highest priority (newest)
+                default=1,  # Has value = lower priority
+                output_field=IntegerField()
+            )
+        ).order_by('sort_priority', '-sunat_issue_time', '-created_at')
         
         documents_page = self.paginate_queryset(documents)
         serializer = DocumentSerializer(documents_page, many=True)
@@ -41,9 +56,16 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='get-invoices')
     def get_invoices(self, request):
         """
-        Fetch invoices from Sunat API
+        Fetch invoices from database
         """
-        documents = Document.objects.filter(document_type='01')
+        documents = Document.objects.filter(document_type='01').annotate(
+            sort_priority=Case(
+                When(sunat_issue_time__isnull=True, then=0),  # NULL = highest priority (newest)
+                default=1,  # Has value = lower priority
+                output_field=IntegerField()
+            )
+        ).order_by('sort_priority', '-sunat_issue_time', '-created_at')
+        
         documents_page = self.paginate_queryset(documents)
         serializer = DocumentSerializer(documents_page, many=True)
         return self.get_paginated_response(serializer.data)
@@ -272,6 +294,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             # Calculate total from order items (exactly what user sent)
             total_amount = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
             
+            # Get current timestamp in milliseconds (for sunat_issue_time)
+            current_timestamp = int(datetime.now().timestamp() * 1000)
+            
             # Create document
             document = Document.objects.create(
                 sunat_id=sunat_response.get('documentId'),
@@ -281,6 +306,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 sunat_status='PENDIENTE',
                 status='pending',
                 amount=Decimal(str(total_amount)),
+                sunat_issue_time=current_timestamp,
             )
             
             # Return created document
@@ -384,6 +410,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
             # Calculate total from order items (exactly what user sent)
             total_amount = sum(float(item.get('cost', 0)) * float(item.get('quantity', 0)) for item in order_items)
             
+            # Get current timestamp in milliseconds (for sunat_issue_time)
+            current_timestamp = int(datetime.now().timestamp() * 1000)
+            
             # Create document
             document = Document.objects.create(
                 sunat_id=sunat_response.get('documentId'),
@@ -393,6 +422,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 sunat_status='PENDIENTE',
                 status='pending',
                 amount=Decimal(str(total_amount)),
+                sunat_issue_time=current_timestamp,
             )
             
             # Return created document
