@@ -2,6 +2,7 @@ from django.db import models
 from django.conf import settings
 from django.utils import timezone
 from datetime import date, timedelta
+from taxes.models import Document
 
 
 class Category(models.Model):
@@ -107,6 +108,7 @@ class Order(models.Model):
     in_transit_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
+    document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # Generate order number if not set
