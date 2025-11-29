@@ -208,7 +208,7 @@ class OrderForBillingSerializer(serializers.ModelSerializer):
     def get_total_amount(self, obj):
         """Calculate total amount from order items"""
         items = obj.orderitem_set.all()
-        return float(sum(item.price * item.quantity for item in items))
+        return float(sum(item.price for item in items))
     
     def get_customer_name(self, obj):
         """Return customer full name"""
