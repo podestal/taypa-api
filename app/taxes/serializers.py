@@ -14,6 +14,7 @@ class CreateInvoiceSerializer(serializers.Serializer):
     """Serializer for creating invoices"""
     order_items = OrderItemSerializer(many=True)
     ruc = serializers.CharField()
+    razon_social = serializers.CharField()
     address = serializers.CharField()
     order_id = serializers.IntegerField(required=False, allow_null=True)
 

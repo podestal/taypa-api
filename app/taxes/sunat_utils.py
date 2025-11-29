@@ -265,6 +265,7 @@ def generate_invoice_data(
     correlative: str,
     order_items: List[Dict],
     ruc: str,
+    razon_social: str,
     address: str,
     supplier_ruc: str = "20482674828",
     supplier_name: str = "Axios",
@@ -277,6 +278,7 @@ def generate_invoice_data(
         correlative: Document number (e.g., "00000001")
         order_items: List of items with keys: id, name, quantity, cost
         ruc: Customer RUC
+        razon_social: Customer legal company name (razón social)
         address: Customer address
         supplier_ruc: Supplier RUC (default: "20482674828")
         supplier_name: Supplier name (default: "Axios")
@@ -358,7 +360,7 @@ def generate_invoice_data(
                         },
                     },
                     "cac:PartyLegalEntity": {
-                        "cbc:RegistrationName": {"_text": "Factura"},
+                        "cbc:RegistrationName": {"_text": razon_social},
                         "cac:RegistrationAddress": {
                             "cac:AddressLine": {"cbc:Line": {"_text": address}},
                         },

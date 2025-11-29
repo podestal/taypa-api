@@ -216,10 +216,12 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 50.00}
             ],
             "ruc": "20123456789",
+            "razon_social": "Empresa S.A.C.",
             "address": "Av. Principal 123",
             "order_id": 123  // Optional: Link the created document to an order
         }
         """
+        print('create_invoice request.data', request.data)
         serializer = CreateInvoiceSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -248,6 +250,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 correlative=correlative,
                 order_items=[dict(item) for item in order_items],
                 ruc=serializer.validated_data['ruc'],
+                razon_social=serializer.validated_data['razon_social'],
                 address=serializer.validated_data['address']
             )
             
@@ -352,6 +355,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             "order_id": 123  // Optional: Link the created document to an order
         }
         """
+        print('create_ticket request.data', request.data)
         serializer = CreateTicketSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
