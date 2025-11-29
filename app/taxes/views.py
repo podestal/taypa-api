@@ -205,6 +205,136 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
+    @action(detail=False, methods=['get'], url_path='sync-today')
+    def sync_today_documents(self, request):
+        """
+        Sync only today's documents from Sunat API to database
+        Downloads XML files and extracts amount information for documents issued today
+        """
+        sunat_url = settings.SUNAT_API_URL
+        persona_id = settings.SUNAT_PERSONA_ID
+        persona_token = settings.SUNAT_PERSONA_TOKEN
+
+        if not persona_id or not persona_token:
+            return Response(
+                {'error': 'Sunat API credentials not configured'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        try:
+            # Fetch documents from Sunat API
+            endpoint = f"{sunat_url.rstrip('/')}/getAll"
+            response = requests.get(
+                endpoint,
+                params={
+                    'personaId': persona_id,
+                    'personaToken': persona_token,
+                    'limit': 100
+                },
+                timeout=30
+            )
+            response.raise_for_status()
+            sunat_documents = response.json()
+            
+            # Ensure it's a list
+            if not isinstance(sunat_documents, list):
+                return Response(
+                    {'error': 'Invalid response format from Sunat API'},
+                    status=status.HTTP_502_BAD_GATEWAY
+                )
+            
+            # Get today's date range (start and end of day)
+            from django.utils import timezone
+            now = timezone.now()
+            today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            today_end = now.replace(hour=23, minute=59, second=59, microsecond=999999)
+            
+            # Convert to milliseconds (Unix timestamp)
+            today_start_ms = int(today_start.timestamp() * 1000)
+            today_end_ms = int(today_end.timestamp() * 1000)
+            
+            # Get all existing document IDs from our database (created today)
+            existing_today_doc_ids = set(
+                Document.objects.filter(
+                    created_at__date=now.date()
+                ).values_list('sunat_id', flat=True)
+            )
+            
+            # Get all existing document IDs from our database (any date)
+            all_existing_doc_ids = set(
+                Document.objects.values_list('sunat_id', flat=True)
+            )
+            
+            # Filter documents to only include those issued today
+            today_documents = []
+            
+            for doc in sunat_documents:
+                issue_time = doc.get('issueTime')
+                doc_id = doc.get('id')
+                
+                # Check if document has issueTime from today
+                if issue_time and isinstance(issue_time, (int, float)):
+                    if today_start_ms <= issue_time <= today_end_ms:
+                        today_documents.append(doc)
+                        continue
+                
+                # If no issueTime or not from today, check if it's a new document
+                # (not in our DB yet) - likely created today
+                if doc_id and doc_id not in all_existing_doc_ids:
+                    today_documents.append(doc)
+                # Also include documents that exist in our DB and were created today
+                # (to update their status, XML, etc.)
+                elif doc_id and doc_id in existing_today_doc_ids:
+                    today_documents.append(doc)
+            
+            synced_count = 0
+            errors = []
+            
+            # Process each document from today
+            for sunat_doc in today_documents:
+                try:
+                    # Process XML to extract amount (this may fail, but we still want to save the document)
+                    processed_data = process_sunat_document(sunat_doc)
+                    
+                    # Sync to database even if XML processing failed
+                    # This way we at least have the basic document info
+                    document = Document.sync_from_sunat(sunat_doc, processed_data)
+                    
+                    if document:
+                        synced_count += 1
+                        # Only report error if XML processing failed
+                        if processed_data.get('error'):
+                            errors.append({
+                                'sunat_id': sunat_doc.get('id'),
+                                'xml_url': sunat_doc.get('xml'),
+                                'error': processed_data['error']
+                            })
+                
+                except Exception as e:
+                    errors.append({
+                        'sunat_id': sunat_doc.get('id', 'unknown'),
+                        'xml_url': sunat_doc.get('xml'),
+                        'error': str(e)
+                    })
+            
+            return Response({
+                'synced': synced_count,
+                'total_today': len(today_documents),
+                'total_fetched': len(sunat_documents),
+                'errors': errors
+            }, status=status.HTTP_200_OK)
+            
+        except requests.exceptions.RequestException as e:
+            return Response(
+                {'error': f'Failed to fetch documents from Sunat API: {str(e)}'},
+                status=status.HTTP_502_BAD_GATEWAY
+            )
+        except Exception as e:
+            return Response(
+                {'error': f'Unexpected error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
     @action(detail=False, methods=['post'], url_path='create-invoice')
     def create_invoice(self, request):
         """
