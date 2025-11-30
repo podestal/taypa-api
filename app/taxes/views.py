@@ -40,95 +40,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
     ).order_by('sort_priority', '-sunat_issue_time', '-created_at')
     serializer_class = DocumentSerializer
     pagination_class = SimplePagination
-    # permission_classes = [IsAuthenticated]
-
-    def _fetch_pdf_binary(self, sunat_id, max_retries=5, delay=3):
-        """
-        Helper method to fetch PDF binary data from Sunat
-        Waits for document to be ready in Sunat before fetching PDF
-        Returns tuple: (pdf_bytes, fileName) or (None, None) if failed
-        """
-        import time
-        persona_id = settings.SUNAT_PERSONA_ID
-        persona_token = settings.SUNAT_PERSONA_TOKEN
-        sunat_url = settings.SUNAT_API_URL
-        pdf_format = 'ticket80mm'
-        
-        if not persona_id or not persona_token:
-            return None, None
-        
-        # First, wait for document to be ready in Sunat
-        print(f"Waiting for document {sunat_id} to be ready in Sunat...")
-        for attempt in range(max_retries):
-            try:
-                # Check if document exists and is ready in Sunat
-                get_by_id_endpoint = f"{sunat_url.rstrip('/')}/{sunat_id}/getById"
-                sunat_response = requests.get(
-                    get_by_id_endpoint,
-                    params={'personaId': persona_id, 'personaToken': persona_token},
-                    timeout=30
-                )
-                
-                # If document is found (200), it means it's available
-                if sunat_response.status_code == 200:
-                    sunat_doc = sunat_response.json()
-                    if isinstance(sunat_doc, dict):
-                        # Document exists, try to get fileName
-                        fileName = None
-                        if sunat_doc.get('fileName'):
-                            fileName = f"{sunat_doc['fileName']}.pdf"
-                        
-                        # Fallback: construct from database
-                        if not fileName:
-                            try:
-                                db_document = Document.objects.get(sunat_id=sunat_id)
-                                fileName = f"20482674828-{db_document.document_type}-{db_document.serie}-{db_document.numero}.pdf"
-                            except Document.DoesNotExist:
-                                fileName = "document.pdf"
-                        
-                        # Now try to fetch PDF (may need a bit more time for PDF generation)
-                        print(f"Document found. Attempting to fetch PDF (attempt {attempt + 1}/{max_retries})...")
-                        base_url = sunat_url.rstrip('/')
-                        endpoint = f"{base_url}/{sunat_id}/getPDF/{pdf_format}/{fileName}"
-                        
-                        pdf_response = requests.get(
-                            endpoint,
-                            params={'personaId': persona_id, 'personaToken': persona_token},
-                            timeout=30,
-                            stream=True,
-                            allow_redirects=True
-                        )
-                        
-                        # Check if PDF is ready
-                        if pdf_response.status_code == 200:
-                            content_type = pdf_response.headers.get('Content-Type', '').lower()
-                            if 'pdf' in content_type:
-                                print(f"PDF successfully fetched!")
-                                return pdf_response.content, fileName
-                            # If response is HTML (404 page), PDF not ready yet
-                            elif 'html' in content_type:
-                                print(f"PDF not ready yet (got HTML response), waiting...")
-                            else:
-                                print(f"Unexpected content type: {content_type}")
-                
-                # If document not found or PDF not ready, wait and retry
-                if attempt < max_retries - 1:
-                    print(f"Waiting {delay} seconds before retry...")
-                    time.sleep(delay)
-                    
-            except requests.exceptions.RequestException as e:
-                print(f"Request error: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
-                continue
-            except Exception as e:
-                print(f"Unexpected error: {str(e)}")
-                if attempt < max_retries - 1:
-                    time.sleep(delay)
-                continue
-        
-        print(f"Failed to fetch PDF after {max_retries} attempts")
-        return None, None
+    permission_classes = [IsAuthenticated]
 
     @action(detail=False, methods=['get'], url_path='get-tickets')
     def get_tickets(self, request):
@@ -608,150 +520,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['get'], url_path='get-pdf')
-    def get_pdf(self, request):
-        """
-        Get PDF representation of a document from Sunat (ticket80mm format)
-        
-        Query parameters (one required):
-            sunat_id: The Sunat document ID
-            OR
-            document_id: The local database document ID (UUID) - will look up sunat_id
-        """
-        document_id = request.query_params.get('document_id')
-        sunat_id = request.query_params.get('sunat_id')
-        
-        # Hardcode format to ticket80mm
-        pdf_format = 'ticket80mm'
-        
-        # Get sunat_id from document_id if not provided
-        if document_id and not sunat_id:
-            try:
-                db_document = Document.objects.get(id=document_id)
-                sunat_id = db_document.sunat_id
-                if not sunat_id:
-                    return Response(
-                        {'error': f'Document {document_id} does not have a sunat_id'},
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-            except Document.DoesNotExist:
-                return Response(
-                    {'error': f'Document with id "{document_id}" not found'},
-                    status=status.HTTP_404_NOT_FOUND
-                )
-        
-        if not sunat_id:
-            return Response(
-                {'error': 'Either document_id or sunat_id parameter is required'},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        
-        persona_id = settings.SUNAT_PERSONA_ID
-        persona_token = settings.SUNAT_PERSONA_TOKEN
-        
-        if not persona_id or not persona_token:
-            return Response(
-                {'error': 'Sunat API credentials not configured'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        
-        try:
-            # First, fetch document from Sunat to get the actual fileName
-            sunat_url = settings.SUNAT_API_URL
-            get_by_id_endpoint = f"{sunat_url.rstrip('/')}/{sunat_id}/getById"
-            
-            sunat_response = requests.get(
-                get_by_id_endpoint,
-                params={
-                    'personaId': persona_id,
-                    'personaToken': persona_token,
-                },
-                timeout=30
-            )
-            
-            fileName = None
-            if sunat_response.status_code == 200:
-                sunat_doc = sunat_response.json()
-                if isinstance(sunat_doc, dict) and sunat_doc.get('fileName'):
-                    fileName = f"{sunat_doc['fileName']}.pdf"
-            
-            # Fallback: construct fileName from database if available
-            if not fileName:
-                try:
-                    db_document = Document.objects.get(sunat_id=sunat_id)
-                    # Construct fileName: RUC-TYPE-SERIE-NUMERO.pdf
-                    fileName = f"20482674828-{db_document.document_type}-{db_document.serie}-{db_document.numero}.pdf"
-                except Document.DoesNotExist:
-                    fileName = "document.pdf"
-            
-            # Construct getPDF URL
-            # Endpoint format: /api/documents/:documentId/getPDF/:format/:fileName.pdf
-            # This redirects to pdf.apisunat.com, so requests will follow redirects automatically
-            base_url = sunat_url.rstrip('/')
-            endpoint = f"{base_url}/{sunat_id}/getPDF/{pdf_format}/{fileName}"
-            
-            print(f"Fetching PDF from Sunat: {endpoint}")
-            
-            response = requests.get(
-                endpoint,
-                params={
-                    'personaId': persona_id,
-                    'personaToken': persona_token,
-                },
-                timeout=30,
-                stream=True,  # Stream for binary content
-                allow_redirects=True  # Follow redirects to pdf.apisunat.com
-            )
-            
-            if response.status_code == 404:
-                return Response(
-                    {
-                        'error': 'PDF not found in Sunat',
-                        'sunat_id': sunat_id,
-                        'endpoint_used': endpoint,
-                        'help': 'Make sure the document exists and the format/fileName are correct'
-                    },
-                    status=status.HTTP_404_NOT_FOUND
-                )
-            
-            response.raise_for_status()
-            
-            # Check if response is PDF
-            content_type = response.headers.get('Content-Type', '')
-            if 'pdf' not in content_type.lower():
-                return Response(
-                    {
-                        'error': 'Response is not a PDF',
-                        'content_type': content_type,
-                        'response_preview': response.text[:200] if hasattr(response, 'text') else 'N/A'
-                    },
-                    status=status.HTTP_502_BAD_GATEWAY
-                )
-            
-            # Return PDF as file download
-            from django.http import HttpResponse
-            pdf_response = HttpResponse(
-                response.content,
-                content_type='application/pdf'
-            )
-            pdf_response['Content-Disposition'] = f'inline; filename="{fileName}"'
-            return pdf_response
-            
-        except requests.exceptions.RequestException as e:
-            return Response(
-                {'error': f'Failed to fetch PDF from Sunat: {str(e)}'},
-                status=status.HTTP_502_BAD_GATEWAY
-            )
-        except Exception as e:
-            return Response(
-                {'error': f'Unexpected error: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     @action(detail=False, methods=['post'], url_path='create-invoice')
     def create_invoice(self, request):
         """
-        Create an invoice (factura) in Sunat and optionally return PDF
+        Create an invoice (factura) in Sunat
         
         Request body:
         {
@@ -871,25 +643,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     # Don't fail the request, just log or ignore
                     pass
             
-            # Check if client wants PDF in response
-            return_pdf = serializer.validated_data.get('return_pdf', False)
-            
-            # Try to fetch PDF if requested (with retry logic)
-            # Note: Document creation in Sunat is async, so we wait for it to be ready first
-            if return_pdf:
-                pdf_bytes, fileName = self._fetch_pdf_binary(document.sunat_id, max_retries=8, delay=4)
-                if pdf_bytes:
-                    from django.http import HttpResponse
-                    pdf_response = HttpResponse(pdf_bytes, content_type='application/pdf')
-                    pdf_response['Content-Disposition'] = f'inline; filename="{fileName}"'
-                    pdf_response['X-Content-Type-Options'] = 'nosniff'
-                    return pdf_response
-            
-            # Return created document with PDF URL
+            # Return created document
             doc_serializer = DocumentSerializer(document)
-            response_data = doc_serializer.data
-            response_data['pdf_url'] = f"/taxes/documents/get-pdf/?sunat_id={document.sunat_id}"
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
             
         except requests.exceptions.RequestException as e:
             return Response(
@@ -1019,25 +775,9 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     # Don't fail the request, just log or ignore
                     pass
             
-            # Check if client wants PDF in response
-            return_pdf = serializer.validated_data.get('return_pdf', False)
-            
-            # Try to fetch PDF if requested (with retry logic)
-            # Note: Document creation in Sunat is async, so we wait for it to be ready first
-            if return_pdf:
-                pdf_bytes, fileName = self._fetch_pdf_binary(document.sunat_id, max_retries=8, delay=4)
-                if pdf_bytes:
-                    from django.http import HttpResponse
-                    pdf_response = HttpResponse(pdf_bytes, content_type='application/pdf')
-                    pdf_response['Content-Disposition'] = f'inline; filename="{fileName}"'
-                    pdf_response['X-Content-Type-Options'] = 'nosniff'
-                    return pdf_response
-            
-            # Return created document with PDF URL
+            # Return created document
             doc_serializer = DocumentSerializer(document)
-            response_data = doc_serializer.data
-            response_data['pdf_url'] = f"/taxes/documents/get-pdf/?sunat_id={document.sunat_id}"
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
             
         except requests.exceptions.RequestException as e:
             return Response(
