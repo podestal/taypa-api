@@ -13,7 +13,7 @@ from .serializers import (
     DocumentSerializer,
     CreateInvoiceSerializer,
     CreateTicketSerializer,
-    SimpleTicketSerializer
+    GeneratePDFSerializer
 )
 from .services import process_sunat_document
 from .sunat_utils import (
@@ -1062,47 +1062,194 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='generate-ticket')
     def generate_ticket(self, request):
         """
-        Generate a simple ticket PDF (no Sunat connection)
-        For internal use - prints immediately
+        Generate PDF for ticket, boleta, or factura
         
-        Request body:
+        Request body for 'ticket' (simple ticket, no Sunat):
         {
+            "document_type": "ticket",
             "order_items": [
                 {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 10.00}
             ],
             "order_number": "ORD-001",  // Optional
             "customer_name": "Juan Pérez"  // Optional
         }
+        
+        Request body for 'boleta' or 'factura' (Sunat documents):
+        {
+            "document_type": "boleta",  // or "factura"
+            "document_id": "uuid-here"  // Local database document ID
+            // OR
+            "sunat_id": "sunat-id-here"  // Sunat document ID
+        }
         """
         from django.http import HttpResponse
         
-        serializer = SimpleTicketSerializer(data=request.data)
+        serializer = GeneratePDFSerializer(data=request.data)
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         
         try:
-            order_items = serializer.validated_data['order_items']
-            order_number = serializer.validated_data.get('order_number', '')
-            customer_name = serializer.validated_data.get('customer_name', '')
+            document_type = serializer.validated_data['document_type']
             
-            # Generate PDF
-            pdf_buffer = generate_ticket_pdf(
-                order_items=order_items,
-                business_name="Taypa",
-                business_address="Avis Luz y Fuerza D-8",
-                business_ruc="20482674828",
-                order_number=order_number,
-                customer_name=customer_name,
-            )
+            # Handle simple ticket (no Sunat)
+            if document_type == 'ticket':
+                order_items = serializer.validated_data['order_items']
+                order_number = serializer.validated_data.get('order_number', '')
+                customer_name = serializer.validated_data.get('customer_name', '')
+                
+                # Generate PDF locally
+                pdf_buffer = generate_ticket_pdf(
+                    order_items=order_items,
+                    business_name="Taypa",
+                    business_address="Avis Luz y Fuerza D-8",
+                    business_ruc="20482674828",
+                    order_number=order_number,
+                    customer_name=customer_name,
+                )
+                
+                # Return PDF response
+                response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+                filename = f"ticket_{order_number or datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+                response['Content-Disposition'] = f'inline; filename="{filename}"'
+                return response
             
-            # Return PDF response
-            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
-            filename = f"ticket_{order_number or datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-            response['Content-Disposition'] = f'inline; filename="{filename}"'
-            return response
+            # Handle boleta or factura (Sunat documents) - generate PDF locally from DB data
+            else:  # document_type is 'boleta' or 'factura'
+                # Get document from database
+                document_id = serializer.validated_data.get('document_id')
+                sunat_id = serializer.validated_data.get('sunat_id')
+                
+                try:
+                    if document_id:
+                        document = Document.objects.get(id=document_id)
+                    else:
+                        document = Document.objects.get(sunat_id=sunat_id)
+                except Document.DoesNotExist:
+                    return Response(
+                        {'error': f'Document not found'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                
+                # Verify document type matches
+                expected_type = '03' if document_type == 'boleta' else '01'
+                if document.document_type != expected_type:
+                    return Response(
+                        {
+                            'error': f'Document type mismatch. Expected {document_type} (type {expected_type}), but document is type {document.document_type}'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Get the Order linked to this Document (via reverse FK)
+                from store.models import Order
+                try:
+                    order = Order.objects.get(document=document)
+                except Order.DoesNotExist:
+                    return Response(
+                        {'error': 'No order linked to this document. Cannot generate PDF without order items.'},
+                        status=status.HTTP_404_NOT_FOUND
+                    )
+                except Order.MultipleObjectsReturned:
+                    # Multiple orders might be linked, get the first one
+                    order = Order.objects.filter(document=document).first()
+                
+                # Get order items from the order
+                order_items_data = []
+                for order_item in order.orderitem_set.all():
+                    # Use dish.price as the unit price (from Dish model)
+                    # OrderItem.price might store total or outdated price, so we use dish.price
+                    unit_price = float(order_item.dish.price)
+                    
+                    # Get category name and combine with dish name
+                    category_name = order_item.category.name if order_item.category else ''
+                    dish_name = order_item.dish.name
+                    display_name = f"{category_name} - {dish_name}" if category_name else dish_name
+                    
+                    order_items_data.append({
+                        'id': str(order_item.dish.id),
+                        'name': display_name,  # CategoryName - DishName
+                        'quantity': float(order_item.quantity),
+                        'cost': unit_price,  # Unit price from Dish.price
+                    })
+                
+                if not order_items_data:
+                    return Response(
+                        {'error': 'Order has no items. Cannot generate PDF.'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Print order items that will go to PDF
+                print(f"\n{'='*60}")
+                print(f"📄 Generating PDF for {document_type.upper()}: {document.serie}-{document.numero}")
+                print(f"{'='*60}")
+                print(f"Order Items ({len(order_items_data)} items):")
+                for idx, item in enumerate(order_items_data, 1):
+                    item_total = item['quantity'] * item['cost']
+                    print(f"  {idx}. {item['name']}")
+                    print(f"     Quantity: {item['quantity']} x ${item['cost']:.2f} = ${item_total:.2f}")
+                print(f"{'='*60}\n")
+                
+                # Get customer name if available
+                customer_name = None
+                if order.customer:
+                    customer_name = f"{order.customer.first_name} {order.customer.last_name}".strip()
+                
+                # Generate document code (serie-numero)
+                document_code = f"{document.serie}-{document.numero}"
+                
+                # Get document emission date (use sunat_issue_time if available, otherwise created_at)
+                # sunat_issue_time is a Unix timestamp (milliseconds), convert to datetime
+                if document.sunat_issue_time:
+                    # Convert Unix timestamp (milliseconds) to datetime
+                    # Note: fromtimestamp returns naive datetime, but created_at is timezone-aware
+                    document_date = datetime.fromtimestamp(document.sunat_issue_time / 1000.0)
+                else:
+                    document_date = document.created_at
+                
+                # For factura: Get customer company info from XML
+                customer_razon_social = None
+                customer_ruc = None
+                customer_address = None
+                
+                if document_type == 'factura' and document.xml_url:
+                    try:
+                        from .services import download_and_extract_xml, parse_xml_customer_info
+                        xml_content, error = download_and_extract_xml(document.xml_url)
+                        if xml_content:
+                            customer_info = parse_xml_customer_info(xml_content)
+                            customer_razon_social = customer_info.get('razon_social')
+                            customer_ruc = customer_info.get('ruc')
+                            customer_address = customer_info.get('address')
+                        else:
+                            print(f"Warning: Could not extract customer info from XML: {error}")
+                    except Exception as e:
+                        print(f"Error extracting customer info from XML: {str(e)}")
+                
+                # Generate PDF locally using our PDF generator
+                # Don't pass order_number for boleta/factura (already shown at top)
+                pdf_buffer = generate_ticket_pdf(
+                    order_items=order_items_data,
+                    business_name="Taypa",
+                    business_address="Avis Luz y Fuerza D-8",
+                    business_ruc="20482674828",
+                    order_number=None,  # Not shown for boleta/factura (already at top)
+                    customer_name=customer_name,
+                    document_type=document_type,  # 'boleta' or 'factura'
+                    document_code=document_code,  # Serie-numero like "B001-00003"
+                    document_date=document_date,  # Emission date
+                    customer_razon_social=customer_razon_social,  # For factura
+                    customer_ruc=customer_ruc,  # For factura
+                    customer_address=customer_address,  # For factura
+                )
+                
+                # Return PDF response
+                response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+                filename = f"{document_type}_{document.serie}-{document.numero}.pdf"
+                response['Content-Disposition'] = f'inline; filename="{filename}"'
+                return response
             
         except Exception as e:
             return Response(
-                {'error': f'Failed to generate ticket PDF: {str(e)}'},
+                {'error': f'Failed to generate PDF: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
