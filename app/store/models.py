@@ -108,7 +108,7 @@ class Order(models.Model):
     in_transit_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
-    document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True)
+    document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True)
 
     def save(self, *args, **kwargs):
         # Generate order number if not set

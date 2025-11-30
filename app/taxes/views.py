@@ -526,7 +526,10 @@ class DocumentViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='create-invoice')
     def create_invoice(self, request):
         """
-        Create an invoice (factura) in Sunat
+        Create an invoice (factura) in Sunat and sync it
+        
+        After creating the document, attempts to sync it from Sunat API
+        with retries until status is ACEPTADO (1s, 2s, 3s, 5s delays)
         
         Request body:
         {
@@ -536,8 +539,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
             "ruc": "20123456789",
             "razon_social": "Empresa S.A.C.",
             "address": "Av. Principal 123",
-            "order_id": 123,  // Optional: Link the created document to an order
-            "return_pdf": true  // Optional: If true, returns PDF directly in response
+            "order_id": 123  // Optional: Link the created document to an order
         }
         """
         print('create_invoice request.data', request.data)
@@ -646,7 +648,138 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     # Don't fail the request, just log or ignore
                     pass
             
-            # Return created document
+            # Try to sync the document with retries (1s, 2s, 3s, 5s)
+            # Keep retrying until status is ACEPTADO (accepted)
+            sunat_id = document.sunat_id
+            delays = [1, 2, 3, 5]  # Wait 1s before first attempt, then 2s, 3s, 5s
+            sunat_url = settings.SUNAT_API_URL
+            max_attempts = len(delays)
+            
+            sync_start_time = time.time()
+            synced_successfully = False
+            attempts_made = 0
+            
+            print(f"\n{'='*60}")
+            print(f"SYNC: Starting sync for document {sunat_id} ({document.serie}-{document.numero})")
+            print(f"      Will retry until status is ACEPTADO")
+            print(f"{'='*60}")
+            
+            # Try syncing with retries until we get ACEPTADO status
+            for attempt in range(max_attempts):
+                attempts_made = attempt + 1
+                attempt_start_time = time.time()
+                
+                try:
+                    # Wait before each attempt (except first one)
+                    if attempt > 0:
+                        delay = delays[attempt - 1]
+                        print(f"⏳ Waiting {delay}s before sync attempt {attempts_made}/{max_attempts}...")
+                        time.sleep(delay)
+                    else:
+                        print(f"🔄 Sync attempt {attempts_made}/{max_attempts}: Fetching from Sunat...")
+                    
+                    # Fetch document from Sunat (same as sync_single)
+                    endpoint = f"{sunat_url.rstrip('/')}/{sunat_id}/getById"
+                    response = requests.get(
+                        endpoint,
+                        params={
+                            'personaId': persona_id,
+                            'personaToken': persona_token,
+                        },
+                        timeout=30
+                    )
+                    
+                    if response.status_code == 404:
+                        attempt_time = time.time() - attempt_start_time
+                        print(f"❌ Attempt {attempts_made} failed: Document not found yet (took {attempt_time:.2f}s)")
+                        if attempts_made < max_attempts:
+                            continue
+                        else:
+                            break
+                    
+                    response.raise_for_status()
+                    sunat_doc = response.json()
+                    
+                    if not isinstance(sunat_doc, dict) or not sunat_doc.get('id'):
+                        attempt_time = time.time() - attempt_start_time
+                        print(f"❌ Attempt {attempts_made} failed: Invalid response format (took {attempt_time:.2f}s)")
+                        continue
+                    
+                    # Check the status from Sunat
+                    sunat_status = sunat_doc.get('status', '').upper()
+                    print(f"✅ Document found! Status: {sunat_status}")
+                    
+                    # Sync the document (even if status is not ACEPTADO yet)
+                    synced_count, errors = process_and_sync_documents([sunat_doc], process_sunat_document)
+                    
+                    if synced_count > 0:
+                        # Refresh the document from database to get all updates
+                        document.refresh_from_db()
+                        
+                        # Check if status is ACEPTADO - only then we're done
+                        if sunat_status == 'ACEPTADO':
+                            synced_successfully = True
+                            attempt_time = time.time() - attempt_start_time
+                            total_time = time.time() - sync_start_time
+                            
+                            print(f"\n{'='*60}")
+                            print(f"✅ SYNC SUCCESS - DOCUMENT ACCEPTED!")
+                            print(f"   Document: {document.serie}-{document.numero}")
+                            print(f"   Status: {document.sunat_status} -> {document.status}")
+                            print(f"   Amount: {document.amount}")
+                            print(f"   Attempts: {attempts_made}/{max_attempts}")
+                            print(f"   Attempt time: {attempt_time:.2f}s")
+                            print(f"   Total time: {total_time:.2f}s")
+                            print(f"{'='*60}\n")
+                            break
+                        elif sunat_status in ['RECHAZADO', 'EXCEPCION']:
+                            # Final status but not accepted - stop retrying
+                            attempt_time = time.time() - attempt_start_time
+                            total_time = time.time() - sync_start_time
+                            print(f"\n{'='*60}")
+                            print(f"⚠️  DOCUMENT NOT ACCEPTED")
+                            print(f"   Document: {document.serie}-{document.numero}")
+                            print(f"   Status: {document.sunat_status} -> {document.status}")
+                            print(f"   Attempts: {attempts_made}/{max_attempts}")
+                            print(f"   Total time: {total_time:.2f}s")
+                            print(f"{'='*60}\n")
+                            break
+                        else:
+                            # Status is still PENDIENTE or other - keep retrying
+                            attempt_time = time.time() - attempt_start_time
+                            print(f"⏳ Status is {sunat_status}, not ACEPTADO yet. Will retry... (took {attempt_time:.2f}s)")
+                            if attempts_made < max_attempts:
+                                continue
+                            else:
+                                print(f"⚠️  Max attempts reached. Status is still {sunat_status}, not ACEPTADO.")
+                                break
+                    else:
+                        attempt_time = time.time() - attempt_start_time
+                        print(f"⚠️  Attempt {attempts_made} failed: Sync returned 0 documents (took {attempt_time:.2f}s)")
+                        
+                except requests.exceptions.RequestException as e:
+                    attempt_time = time.time() - attempt_start_time
+                    print(f"❌ Attempt {attempts_made} failed: Network error - {str(e)} (took {attempt_time:.2f}s)")
+                    if attempts_made < max_attempts:
+                        continue
+                except Exception as e:
+                    attempt_time = time.time() - attempt_start_time
+                    print(f"❌ Attempt {attempts_made} failed: {str(e)} (took {attempt_time:.2f}s)")
+                    if attempts_made < max_attempts:
+                        continue
+            
+            # Final summary
+            if not synced_successfully:
+                total_time = time.time() - sync_start_time
+                print(f"\n{'='*60}")
+                print(f"⚠️  SYNC FAILED (document created but not synced)")
+                print(f"   Document: {document.serie}-{document.numero}")
+                print(f"   Attempts: {attempts_made}/{max_attempts}")
+                print(f"   Total time: {total_time:.2f}s")
+                print(f"   Use /sync-single/?sunat_id={sunat_id} to retry later")
+                print(f"{'='*60}\n")
+            
+            # Return created document (synced if successful)
             doc_serializer = DocumentSerializer(document)
             return Response(doc_serializer.data, status=status.HTTP_201_CREATED)
             
