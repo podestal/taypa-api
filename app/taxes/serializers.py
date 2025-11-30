@@ -17,12 +17,14 @@ class CreateInvoiceSerializer(serializers.Serializer):
     razon_social = serializers.CharField()
     address = serializers.CharField()
     order_id = serializers.IntegerField(required=False, allow_null=True)
+    return_pdf = serializers.BooleanField(required=False, default=False)
 
 
 class CreateTicketSerializer(serializers.Serializer):
     """Serializer for creating tickets"""
     order_items = OrderItemSerializer(many=True)
     order_id = serializers.IntegerField(required=False, allow_null=True)
+    return_pdf = serializers.BooleanField(required=False, default=False)
 
 
 class DocumentSerializer(serializers.ModelSerializer):
