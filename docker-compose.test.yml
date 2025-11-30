@@ -1,0 +1,62 @@
+services:
+  app:
+    build: .
+    restart: always
+    volumes:
+      - ./app:/app
+      - ./mediafiles:/vol/media
+    ports:
+      - "8000:8000"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME}
+      - DB_USER=${DB_USER}
+      - DB_PASS=${DB_PASS}
+      - DJANGO_ALLOWED_HOSTS=${DJANGO_ALLOWED_HOSTS}
+      - DJANGO_SETTINGS_MODULE=${DJANGO_SETTINGS_MODULE}
+      - DJANGO_CORS_ALLOWED_ORIGINS=${DJANGO_CORS_ALLOWED_ORIGINS}
+      - DJANGO_CSRF_TRUSTED_ORIGINS=${DJANGO_CSRF_TRUSTED_ORIGINS}
+      - SUNAT_PERSONA_ID=${SUNAT_PERSONAL_ID}
+      - SUNAT_PERSONA_TOKEN=${SUNAT_PERSONAL_TOKEN}
+      - ENVIRONMENT=${ENVIRONMENT}
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - dev-db-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=${DB_NAME}
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASS}
+
+  nginx:
+    build:
+      context: .
+      dockerfile: ./nginx/Dockerfile
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./nginx:/etc/nginx/conf.d
+      - /etc/letsencrypt:/etc/letsencrypt
+      - /var/www/certbot:/var/www/certbot
+    image: nginx:latest
+    links:
+      - app
+    environment:
+      - ENVIRONMENT=${ENVIRONMENT}
+    entrypoint: >+
+      sh -c 'if [ "$ENVIRONMENT" = "production" ]; then
+        cp /etc/nginx/conf.d/nginx.prod.conf /etc/nginx/nginx.conf;
+          elif [ "$ENVIRONMENT" = "testing" ]; then
+        cp /etc/nginx/conf.d/nginx.test.conf /etc/nginx/nginx.conf;
+          else
+        cp /etc/nginx/conf.d/nginx.dev.conf /etc/nginx/nginx.conf;
+          fi &&
+          nginx -g "daemon off;"'
+
+volumes:
+  dev-db-data:
+
