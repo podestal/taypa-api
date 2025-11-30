@@ -29,3 +29,10 @@ class DocumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Document
         fields = '__all__'
+
+
+class SimpleTicketSerializer(serializers.Serializer):
+    """Serializer for generating simple tickets (no Sunat)"""
+    order_items = OrderItemSerializer(many=True)
+    order_number = serializers.CharField(required=False, allow_blank=True)
+    customer_name = serializers.CharField(required=False, allow_blank=True)

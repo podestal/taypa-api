@@ -12,7 +12,8 @@ from .models import Document
 from .serializers import (
     DocumentSerializer,
     CreateInvoiceSerializer,
-    CreateTicketSerializer
+    CreateTicketSerializer,
+    SimpleTicketSerializer
 )
 from .services import process_sunat_document
 from .sunat_utils import (
@@ -24,6 +25,7 @@ from .sync_utils import (
     process_and_sync_documents,
     filter_today_documents
 )
+from .pdf_utils import generate_ticket_pdf
 from rest_framework.pagination import BasePagination
 from .pagination import SimplePagination
 from rest_framework.permissions import IsAuthenticated
@@ -787,5 +789,53 @@ class DocumentViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response(
                 {'error': f'Unexpected error: {str(e)}'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=False, methods=['post'], url_path='generate-ticket')
+    def generate_ticket(self, request):
+        """
+        Generate a simple ticket PDF (no Sunat connection)
+        For internal use - prints immediately
+        
+        Request body:
+        {
+            "order_items": [
+                {"id": "1", "name": "Producto 1", "quantity": 2, "cost": 10.00}
+            ],
+            "order_number": "ORD-001",  // Optional
+            "customer_name": "Juan Pérez"  // Optional
+        }
+        """
+        from django.http import HttpResponse
+        
+        serializer = SimpleTicketSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            order_items = serializer.validated_data['order_items']
+            order_number = serializer.validated_data.get('order_number', '')
+            customer_name = serializer.validated_data.get('customer_name', '')
+            
+            # Generate PDF
+            pdf_buffer = generate_ticket_pdf(
+                order_items=order_items,
+                business_name="Axios",
+                business_address="217 primera",
+                business_ruc="20482674828",
+                order_number=order_number,
+                customer_name=customer_name,
+            )
+            
+            # Return PDF response
+            response = HttpResponse(pdf_buffer.getvalue(), content_type='application/pdf')
+            filename = f"ticket_{order_number or datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+            response['Content-Disposition'] = f'inline; filename="{filename}"'
+            return response
+            
+        except Exception as e:
+            return Response(
+                {'error': f'Failed to generate ticket PDF: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
