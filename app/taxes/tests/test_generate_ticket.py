@@ -298,8 +298,8 @@ class TestDocumentGenerateTicketView:
             # Verify parameters
             assert len(call_kwargs['order_items']) == 1
             assert call_kwargs['order_items'][0]['name'] == 'Producto 1'
-            assert call_kwargs['business_name'] == 'Axios'
-            assert call_kwargs['business_address'] == '217 primera'
+            assert call_kwargs['business_name'] == 'Taypa'
+            assert call_kwargs['business_address'] == 'Avis Luz y Fuerza D-8'
             assert call_kwargs['business_ruc'] == '20482674828'
             assert call_kwargs['order_number'] == 'ORD-001'
             assert call_kwargs['customer_name'] == 'Test Customer'
