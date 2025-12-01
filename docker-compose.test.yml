@@ -19,8 +19,11 @@ services:
       - SUNAT_PERSONA_ID=${SUNAT_PERSONAL_ID}
       - SUNAT_PERSONA_TOKEN=${SUNAT_PERSONAL_TOKEN}
       - ENVIRONMENT=${ENVIRONMENT}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     depends_on:
       - db
+      - redis
 
   db:
     image: postgres:15-alpine
@@ -30,6 +33,14 @@ services:
       - POSTGRES_DB=${DB_NAME}
       - POSTGRES_USER=${DB_USER}
       - POSTGRES_PASSWORD=${DB_PASS}
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
 
   nginx:
     build:
@@ -59,4 +70,5 @@ services:
 
 volumes:
   dev-db-data:
+  redis-data:
 

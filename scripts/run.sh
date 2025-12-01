@@ -23,9 +23,9 @@ python manage.py migrate
 # gunicorn taypa.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
 
 if [ "$ENVIRONMENT" = "development" ]; then
-    echo "Starting server with Daphne for development..."
-    exec python manage.py runserver 0.0.0.0:8000
+    echo "Starting server with Daphne for development (supports WebSockets)..."
+    exec daphne -b 0.0.0.0 -p 8000 taypa.asgi:application
 else
-    echo "Starting server with Gunicorn for production..."
-    exec gunicorn taypa.wsgi:application --bind 0.0.0.0:8000 --timeout=5 --threads=10
+    echo "Starting server with Daphne for production (supports WebSockets)..."
+    exec daphne -b 0.0.0.0 -p 8000 taypa.asgi:application
 fi
