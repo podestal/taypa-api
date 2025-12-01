@@ -1,12 +1,13 @@
 import requests
 from decimal import Decimal
-from datetime import datetime
+from datetime import datetime, timedelta
+from django.utils import timezone
 from rest_framework import viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from django.db.models import F, Case, When, IntegerField
+from django.db.models import F, Case, When, IntegerField, Q
 from django.core.exceptions import ObjectDoesNotExist
 from .models import Document
 from .serializers import (
@@ -44,6 +45,140 @@ class DocumentViewSet(viewsets.ModelViewSet):
     serializer_class = DocumentSerializer
     pagination_class = SimplePagination
     permission_classes = [IsAuthenticated]
+
+    def list(self, request, *args, **kwargs):
+        """
+        List documents with optional filters:
+        - document_type: 'boleta' or 'factura'
+        - date_filter: 'today', 'this_week', 'last_seven_days', 'this_month', 'this_year'
+        - date: specific date (YYYY-MM-DD)
+        - start_date and end_date: date range (YYYY-MM-DD)
+        """
+        queryset = self.get_queryset()
+        
+        # Filter by document type
+        document_type = request.query_params.get('document_type', None)
+        if document_type:
+            if document_type.lower() == 'boleta':
+                queryset = queryset.filter(document_type='03')
+            elif document_type.lower() == 'factura':
+                queryset = queryset.filter(document_type='01')
+        
+        # Filter by date
+        date_filter = request.query_params.get('date_filter', None)
+        date = request.query_params.get('date', None)
+        start_date = request.query_params.get('start_date', None)
+        end_date = request.query_params.get('end_date', None)
+        
+        now = timezone.now()
+        date_filters = Q()
+        
+        if date_filter:
+            if date_filter == 'today':
+                # Today: from start of today to end of today
+                start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_day = start_of_day + timedelta(days=1)
+                start_timestamp = int(start_of_day.timestamp() * 1000)
+                end_timestamp = int(end_of_day.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+            
+            elif date_filter == 'this_week':
+                # This week: from Monday of current week to end of Sunday
+                days_since_monday = now.weekday()
+                start_of_week = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
+                end_of_week = start_of_week + timedelta(days=7)
+                start_timestamp = int(start_of_week.timestamp() * 1000)
+                end_timestamp = int(end_of_week.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+            
+            elif date_filter == 'last_seven_days':
+                # Last 7 days: from 7 days ago to now
+                seven_days_ago = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+                start_timestamp = int(seven_days_ago.timestamp() * 1000)
+                end_timestamp = int(now.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lte=end_timestamp)
+            
+            elif date_filter == 'this_month':
+                # This month: from first day of current month to end of last day
+                start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                if now.month == 12:
+                    end_of_month = start_of_month.replace(year=now.year + 1, month=1)
+                else:
+                    end_of_month = start_of_month.replace(month=now.month + 1)
+                start_timestamp = int(start_of_month.timestamp() * 1000)
+                end_timestamp = int(end_of_month.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+            
+            elif date_filter == 'this_year':
+                # This year: from January 1st to end of December 31st
+                start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                end_of_year = start_of_year.replace(year=now.year + 1)
+                start_timestamp = int(start_of_year.timestamp() * 1000)
+                end_timestamp = int(end_of_year.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+        
+        elif date:
+            # Specific date: YYYY-MM-DD format
+            try:
+                date_obj = datetime.strptime(date, '%Y-%m-%d').date()
+                start_of_day = timezone.make_aware(datetime.combine(date_obj, datetime.min.time()))
+                end_of_day = start_of_day + timedelta(days=1)
+                start_timestamp = int(start_of_day.timestamp() * 1000)
+                end_timestamp = int(end_of_day.timestamp() * 1000)
+                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid date format. Use YYYY-MM-DD'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        elif start_date or end_date:
+            # Date range
+            range_filters = []
+            
+            if start_date:
+                try:
+                    start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+                    start_datetime = timezone.make_aware(datetime.combine(start_date_obj, datetime.min.time()))
+                    start_timestamp = int(start_datetime.timestamp() * 1000)
+                    range_filters.append(Q(sunat_issue_time__gte=start_timestamp))
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid start_date format. Use YYYY-MM-DD'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            if end_date:
+                try:
+                    end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+                    end_datetime = timezone.make_aware(datetime.combine(end_date_obj, datetime.max.time()))
+                    end_timestamp = int(end_datetime.timestamp() * 1000)
+                    range_filters.append(Q(sunat_issue_time__lte=end_timestamp))
+                except ValueError:
+                    return Response(
+                        {'error': 'Invalid end_date format. Use YYYY-MM-DD'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            if range_filters:
+                # Combine all range filters with AND
+                combined_filter = range_filters[0]
+                for f in range_filters[1:]:
+                    combined_filter = combined_filter & f
+                date_filters = combined_filter
+        
+        # Apply date filters if any
+        if date_filters:
+            queryset = queryset.filter(date_filters)
+        
+        # Apply pagination
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+        
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='get-tickets')
     def get_tickets(self, request):
