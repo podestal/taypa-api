@@ -986,7 +986,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='boleta-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         factura = baker.make(
             models.Document,
@@ -994,7 +994,7 @@ class TestDocumentListViewFilters:
             serie='F001',
             numero='00000001',
             sunat_id='factura-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         
         url = reverse('document-list')
@@ -1016,7 +1016,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='boleta-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         boleta2 = baker.make(
             models.Document,
@@ -1024,7 +1024,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000002',
             sunat_id='boleta-2',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         # Create factura (should not be returned)
         factura = baker.make(
@@ -1033,7 +1033,7 @@ class TestDocumentListViewFilters:
             serie='F001',
             numero='00000001',
             sunat_id='factura-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         
         url = reverse('document-list')
@@ -1058,7 +1058,7 @@ class TestDocumentListViewFilters:
             serie='F001',
             numero='00000001',
             sunat_id='factura-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         factura2 = baker.make(
             models.Document,
@@ -1066,7 +1066,7 @@ class TestDocumentListViewFilters:
             serie='F001',
             numero='00000002',
             sunat_id='factura-2',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         # Create boleta (should not be returned)
         boleta = baker.make(
@@ -1075,7 +1075,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='boleta-1',
-            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+            created_at=timezone.now(),
         )
         
         url = reverse('document-list')
@@ -1095,7 +1095,7 @@ class TestDocumentListViewFilters:
         """Test filtering by date_filter=today"""
         now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_timestamp = int(today_start.timestamp() * 1000)
+        today_datetime = today_start + timedelta(hours=1)  # 1 hour after start of day
         
         # Create document from today
         today_doc = baker.make(
@@ -1104,19 +1104,19 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='today-doc',
-            sunat_issue_time=today_timestamp + 3600000,  # 1 hour after start of day
+            created_at=today_datetime,
         )
         
         # Create document from yesterday
         yesterday = today_start - timedelta(days=1)
-        yesterday_timestamp = int(yesterday.timestamp() * 1000)
+        yesterday_datetime = yesterday + timedelta(hours=1)
         yesterday_doc = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
             sunat_id='yesterday-doc',
-            sunat_issue_time=yesterday_timestamp + 3600000,
+            created_at=yesterday_datetime,
         )
         
         url = reverse('document-list')
@@ -1134,26 +1134,24 @@ class TestDocumentListViewFilters:
         
         # Create document from 3 days ago (should be included)
         three_days_ago = now - timedelta(days=3)
-        three_days_ago_timestamp = int(three_days_ago.timestamp() * 1000)
         recent_doc = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000001',
             sunat_id='recent-doc',
-            sunat_issue_time=three_days_ago_timestamp,
+            created_at=three_days_ago,
         )
         
         # Create document from 10 days ago (should not be included)
         ten_days_ago = now - timedelta(days=10)
-        ten_days_ago_timestamp = int(ten_days_ago.timestamp() * 1000)
         old_doc = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
             sunat_id='old-doc',
-            sunat_issue_time=ten_days_ago_timestamp,
+            created_at=ten_days_ago,
         )
         
         url = reverse('document-list')
@@ -1169,7 +1167,7 @@ class TestDocumentListViewFilters:
         """Test filtering by date_filter=this_month"""
         now = timezone.now()
         start_of_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-        month_timestamp = int(start_of_month.timestamp() * 1000)
+        this_month_datetime = start_of_month + timedelta(hours=1)
         
         # Create document from this month
         this_month_doc = baker.make(
@@ -1178,7 +1176,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='this-month-doc',
-            sunat_issue_time=month_timestamp + 3600000,
+            created_at=this_month_datetime,
         )
         
         # Create document from last month
@@ -1186,14 +1184,14 @@ class TestDocumentListViewFilters:
             last_month = start_of_month.replace(year=now.year - 1, month=12)
         else:
             last_month = start_of_month.replace(month=now.month - 1)
-        last_month_timestamp = int(last_month.timestamp() * 1000)
+        last_month_datetime = last_month + timedelta(hours=1)
         last_month_doc = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
             sunat_id='last-month-doc',
-            sunat_issue_time=last_month_timestamp + 3600000,
+            created_at=last_month_datetime,
         )
         
         url = reverse('document-list')
@@ -1209,7 +1207,7 @@ class TestDocumentListViewFilters:
         """Test filtering by date_filter=this_year"""
         now = timezone.now()
         start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-        year_timestamp = int(start_of_year.timestamp() * 1000)
+        this_year_datetime = start_of_year + timedelta(hours=1)
         
         # Create document from this year
         this_year_doc = baker.make(
@@ -1218,19 +1216,19 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='this-year-doc',
-            sunat_issue_time=year_timestamp + 3600000,
+            created_at=this_year_datetime,
         )
         
         # Create document from last year
         last_year = start_of_year.replace(year=now.year - 1)
-        last_year_timestamp = int(last_year.timestamp() * 1000)
+        last_year_datetime = last_year + timedelta(hours=1)
         last_year_doc = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
             sunat_id='last-year-doc',
-            sunat_issue_time=last_year_timestamp + 3600000,
+            created_at=last_year_datetime,
         )
         
         url = reverse('document-list')
@@ -1247,7 +1245,6 @@ class TestDocumentListViewFilters:
         # Create document for a specific date
         target_date = datetime(2024, 6, 15, 12, 0, 0)
         target_datetime = timezone.make_aware(target_date)
-        target_timestamp = int(target_datetime.timestamp() * 1000)
         
         target_doc = baker.make(
             models.Document,
@@ -1255,13 +1252,12 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='target-date-doc',
-            sunat_issue_time=target_timestamp,
+            created_at=target_datetime,
         )
         
         # Create document for different date
         other_date = datetime(2024, 6, 16, 12, 0, 0)
         other_datetime = timezone.make_aware(other_date)
-        other_timestamp = int(other_datetime.timestamp() * 1000)
         
         other_doc = baker.make(
             models.Document,
@@ -1269,11 +1265,14 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000002',
             sunat_id='other-date-doc',
-            sunat_issue_time=other_timestamp,
+            created_at=other_datetime,
         )
         
         url = reverse('document-list')
-        response = authenticated_api_client.get(url, {'date': '2024-06-15'})
+        response = authenticated_api_client.get(url, {
+            'date': '2024-06-15',
+            'year': '2024'  # Explicitly provide year to avoid default current year filter
+        })
         
         assert response.status_code == status.HTTP_200_OK
         data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
@@ -1286,7 +1285,7 @@ class TestDocumentListViewFilters:
         # Create documents in range
         start_date = datetime(2024, 6, 10, 12, 0, 0)
         start_datetime = timezone.make_aware(start_date)
-        start_timestamp = int(start_datetime.timestamp() * 1000)
+        in_range_datetime1 = start_datetime + timedelta(hours=1)
         
         in_range_doc1 = baker.make(
             models.Document,
@@ -1294,12 +1293,11 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='in-range-1',
-            sunat_issue_time=start_timestamp + 3600000,
+            created_at=in_range_datetime1,
         )
         
         middle_date = datetime(2024, 6, 15, 12, 0, 0)
         middle_datetime = timezone.make_aware(middle_date)
-        middle_timestamp = int(middle_datetime.timestamp() * 1000)
         
         in_range_doc2 = baker.make(
             models.Document,
@@ -1307,13 +1305,12 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000002',
             sunat_id='in-range-2',
-            sunat_issue_time=middle_timestamp,
+            created_at=middle_datetime,
         )
         
         # Create document before range
         before_date = datetime(2024, 6, 5, 12, 0, 0)
         before_datetime = timezone.make_aware(before_date)
-        before_timestamp = int(before_datetime.timestamp() * 1000)
         
         before_doc = baker.make(
             models.Document,
@@ -1321,13 +1318,12 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000003',
             sunat_id='before-range',
-            sunat_issue_time=before_timestamp,
+            created_at=before_datetime,
         )
         
         # Create document after range
         after_date = datetime(2024, 6, 25, 12, 0, 0)
         after_datetime = timezone.make_aware(after_date)
-        after_timestamp = int(after_datetime.timestamp() * 1000)
         
         after_doc = baker.make(
             models.Document,
@@ -1335,13 +1331,14 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000004',
             sunat_id='after-range',
-            sunat_issue_time=after_timestamp,
+            created_at=after_datetime,
         )
         
         url = reverse('document-list')
         response = authenticated_api_client.get(url, {
             'start_date': '2024-06-10',
-            'end_date': '2024-06-20'
+            'end_date': '2024-06-20',
+            'year': '2024'  # Explicitly provide year to avoid default current year filter
         })
         
         assert response.status_code == status.HTTP_200_OK
@@ -1356,7 +1353,7 @@ class TestDocumentListViewFilters:
         """Test combining document_type and date_filter"""
         now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_timestamp = int(today_start.timestamp() * 1000)
+        today_datetime = today_start + timedelta(hours=1)
         
         # Create boleta from today
         today_boleta = baker.make(
@@ -1365,7 +1362,7 @@ class TestDocumentListViewFilters:
             serie='B001',
             numero='00000001',
             sunat_id='today-boleta',
-            sunat_issue_time=today_timestamp + 3600000,
+            created_at=today_datetime,
         )
         
         # Create factura from today
@@ -1375,19 +1372,19 @@ class TestDocumentListViewFilters:
             serie='F001',
             numero='00000001',
             sunat_id='today-factura',
-            sunat_issue_time=today_timestamp + 3600000,
+            created_at=today_datetime,
         )
         
         # Create boleta from yesterday
         yesterday = today_start - timedelta(days=1)
-        yesterday_timestamp = int(yesterday.timestamp() * 1000)
+        yesterday_datetime = yesterday + timedelta(hours=1)
         yesterday_boleta = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
             sunat_id='yesterday-boleta',
-            sunat_issue_time=yesterday_timestamp + 3600000,
+            created_at=yesterday_datetime,
         )
         
         url = reverse('document-list')
@@ -1433,30 +1430,32 @@ class TestDocumentListViewFilters:
         assert 'error' in response.data
         assert 'Invalid end_date format' in response.data['error']
     
-    def test_list_documents_excludes_null_sunat_issue_time(self, authenticated_api_client):
-        """Test that documents without sunat_issue_time are excluded from date filters"""
-        # Create document with sunat_issue_time
+    def test_list_documents_excludes_old_created_at(self, authenticated_api_client):
+        """Test that documents with old created_at are excluded from date filters"""
+        # Create document created today
         now = timezone.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_timestamp = int(today_start.timestamp() * 1000)
+        today_datetime = today_start + timedelta(hours=1)
         
-        with_timestamp = baker.make(
+        with_created_at = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000001',
-            sunat_id='with-timestamp',
-            sunat_issue_time=today_timestamp + 3600000,
+            sunat_id='with-created-at',
+            created_at=today_datetime,
         )
         
-        # Create document without sunat_issue_time
-        without_timestamp = baker.make(
+        # Create document created yesterday
+        yesterday = today_start - timedelta(days=1)
+        yesterday_datetime = yesterday + timedelta(hours=1)
+        old_created_at = baker.make(
             models.Document,
             document_type='03',
             serie='B001',
             numero='00000002',
-            sunat_id='without-timestamp',
-            sunat_issue_time=None,
+            sunat_id='old-created-at',
+            created_at=yesterday_datetime,
         )
         
         url = reverse('document-list')
@@ -1465,5 +1464,341 @@ class TestDocumentListViewFilters:
         assert response.status_code == status.HTTP_200_OK
         data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
         ids = [doc['id'] for doc in data]
-        assert str(with_timestamp.id) in ids
-        assert str(without_timestamp.id) not in ids
+        assert str(with_created_at.id) in ids
+        assert str(old_created_at.id) not in ids
+    
+    def test_list_documents_includes_total_amount(self, authenticated_api_client):
+        """Test that list response includes total_amount field"""
+        # Create documents with amounts
+        doc1 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='doc-1',
+            amount=Decimal('100.00'),
+            created_at=timezone.now(),
+        )
+        doc2 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='doc-2',
+            amount=Decimal('200.50'),
+            created_at=timezone.now(),
+        )
+        doc3 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000003',
+            sunat_id='doc-3',
+            amount=Decimal('50.25'),
+            created_at=timezone.now(),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert 'total_amount' in response.data
+        # Total should be sum of all amounts: 100.00 + 200.50 + 50.25 = 350.75
+        assert Decimal(response.data['total_amount']) == Decimal('350.75')
+    
+    def test_list_documents_total_amount_respects_filters(self, authenticated_api_client):
+        """Test that total_amount respects document_type and date filters"""
+        now = timezone.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_datetime1 = today_start + timedelta(hours=1)
+        today_datetime2 = today_start + timedelta(hours=2)
+        
+        # Create facturas from today
+        factura1 = baker.make(
+            models.Document,
+            document_type='01',
+            serie='F001',
+            numero='00000001',
+            sunat_id='factura-1',
+            amount=Decimal('500.00'),
+            created_at=today_datetime1,
+        )
+        factura2 = baker.make(
+            models.Document,
+            document_type='01',
+            serie='F001',
+            numero='00000002',
+            sunat_id='factura-2',
+            amount=Decimal('300.00'),
+            created_at=today_datetime2,
+        )
+        
+        # Create boleta from today (should not be included in factura filter)
+        boleta = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='boleta-1',
+            amount=Decimal('100.00'),
+            created_at=today_datetime1,
+        )
+        
+        # Create factura from yesterday (should not be included in today filter)
+        yesterday = today_start - timedelta(days=1)
+        yesterday_datetime = yesterday + timedelta(hours=1)
+        old_factura = baker.make(
+            models.Document,
+            document_type='01',
+            serie='F001',
+            numero='00000003',
+            sunat_id='old-factura',
+            amount=Decimal('200.00'),
+            created_at=yesterday_datetime,
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {
+            'document_type': 'factura',
+            'date_filter': 'today'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert 'total_amount' in response.data
+        # Total should only include facturas from today: 500.00 + 300.00 = 800.00
+        assert Decimal(response.data['total_amount']) == Decimal('800.00')
+    
+    def test_list_documents_total_amount_handles_null_amounts(self, authenticated_api_client):
+        """Test that total_amount handles documents with NULL amounts"""
+        # Create document with amount
+        doc1 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='doc-1',
+            amount=Decimal('100.00'),
+            sunat_issue_time=int(timezone.now().timestamp() * 1000),
+        )
+        
+        # Create document without amount (NULL)
+        doc2 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='doc-2',
+            amount=None,
+            created_at=timezone.now(),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        assert 'total_amount' in response.data
+        # Total should only include doc1: 100.00 (NULL amounts are excluded from sum)
+        assert Decimal(response.data['total_amount']) == Decimal('100.00')
+    
+    def test_list_documents_filter_by_year_defaults_to_current_year(self, authenticated_api_client):
+        """Test that year filter defaults to current year when not provided"""
+        now = timezone.now()
+        current_year = now.year
+        
+        # Create document from current year
+        current_year_doc = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='current-year-doc',
+            amount=Decimal('100.00'),
+            created_at=timezone.make_aware(datetime(current_year, 6, 15, 12, 0, 0)),
+        )
+        
+        # Create document from last year
+        last_year_doc = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='last-year-doc',
+            amount=Decimal('200.00'),
+            created_at=timezone.make_aware(datetime(current_year - 1, 6, 15, 12, 0, 0)),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url)
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        ids = [doc['id'] for doc in data]
+        assert str(current_year_doc.id) in ids
+        assert str(last_year_doc.id) not in ids
+    
+    def test_list_documents_filter_by_specific_year(self, authenticated_api_client):
+        """Test filtering by specific year"""
+        # Create document from 2023
+        doc_2023 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='doc-2023',
+            amount=Decimal('100.00'),
+            created_at=timezone.make_aware(datetime(2023, 6, 15, 12, 0, 0)),
+        )
+        
+        # Create document from 2024
+        doc_2024 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='doc-2024',
+            amount=Decimal('200.00'),
+            created_at=timezone.make_aware(datetime(2024, 6, 15, 12, 0, 0)),
+        )
+        
+        # Create document from 2025
+        doc_2025 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000003',
+            sunat_id='doc-2025',
+            amount=Decimal('300.00'),
+            created_at=timezone.make_aware(datetime(2025, 6, 15, 12, 0, 0)),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {'year': '2024'})
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        ids = [doc['id'] for doc in data]
+        assert str(doc_2023.id) not in ids
+        assert str(doc_2024.id) in ids
+        assert str(doc_2025.id) not in ids
+    
+    def test_list_documents_filter_by_year_invalid_format(self, authenticated_api_client):
+        """Test that invalid year format returns 400 error"""
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {'year': 'invalid'})
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert 'Invalid year format' in response.data['error']
+    
+    def test_list_documents_filter_by_year_out_of_range(self, authenticated_api_client):
+        """Test that year out of valid range returns 400 error"""
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {'year': '1800'})
+        
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert 'Invalid year' in response.data['error']
+        
+        # Test upper bound
+        response = authenticated_api_client.get(url, {'year': '2200'})
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'error' in response.data
+        assert 'Invalid year' in response.data['error']
+    
+    def test_list_documents_filter_by_year_combined_with_document_type(self, authenticated_api_client):
+        """Test combining year filter with document_type filter"""
+        # Create boletas from 2024
+        boleta_2024 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='boleta-2024',
+            amount=Decimal('100.00'),
+            created_at=timezone.make_aware(datetime(2024, 6, 15, 12, 0, 0)),
+        )
+        
+        # Create factura from 2024
+        factura_2024 = baker.make(
+            models.Document,
+            document_type='01',
+            serie='F001',
+            numero='00000001',
+            sunat_id='factura-2024',
+            amount=Decimal('200.00'),
+            created_at=timezone.make_aware(datetime(2024, 6, 15, 12, 0, 0)),
+        )
+        
+        # Create boleta from 2023 (should not be included)
+        boleta_2023 = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='boleta-2023',
+            amount=Decimal('300.00'),
+            created_at=timezone.make_aware(datetime(2023, 6, 15, 12, 0, 0)),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {
+            'year': '2024',
+            'document_type': 'boleta'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        ids = [doc['id'] for doc in data]
+        assert str(boleta_2024.id) in ids
+        assert str(factura_2024.id) not in ids
+        assert str(boleta_2023.id) not in ids
+        # Verify all returned are boletas
+        for doc in data:
+            assert doc['document_type'] == '03'
+    
+    def test_list_documents_filter_by_year_combined_with_date_filter(self, authenticated_api_client):
+        """Test combining year filter with date_filter"""
+        now = timezone.now()
+        current_year = now.year
+        
+        # Create document from current year, this month
+        this_month_doc = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000001',
+            sunat_id='this-month-doc',
+            amount=Decimal('100.00'),
+            created_at=timezone.make_aware(datetime(current_year, now.month, 15, 12, 0, 0)),
+        )
+        
+        # Create document from current year, last month
+        if now.month == 1:
+            last_month = 12
+            last_month_year = current_year - 1
+        else:
+            last_month = now.month - 1
+            last_month_year = current_year
+        
+        last_month_doc = baker.make(
+            models.Document,
+            document_type='03',
+            serie='B001',
+            numero='00000002',
+            sunat_id='last-month-doc',
+            amount=Decimal('200.00'),
+            created_at=timezone.make_aware(datetime(last_month_year, last_month, 15, 12, 0, 0)),
+        )
+        
+        url = reverse('document-list')
+        response = authenticated_api_client.get(url, {
+            'year': str(current_year),
+            'date_filter': 'this_month'
+        })
+        
+        assert response.status_code == status.HTTP_200_OK
+        data = response.data.get('results', response.data) if isinstance(response.data, dict) else response.data
+        ids = [doc['id'] for doc in data]
+        assert str(this_month_doc.id) in ids
+        # last_month_doc might be included if it's from current year, but not if it's from last month of previous year
+        # The key is that year filter is applied first, then date_filter

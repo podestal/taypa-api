@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
-from django.db.models import F, Case, When, IntegerField, Q
+from django.db.models import F, Case, When, IntegerField, Q, Sum
 from django.core.exceptions import ObjectDoesNotExist
 from .models import Document
 from .serializers import (
@@ -53,6 +53,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
         - date_filter: 'today', 'this_week', 'last_seven_days', 'this_month', 'this_year'
         - date: specific date (YYYY-MM-DD)
         - start_date and end_date: date range (YYYY-MM-DD)
+        - year: filter by year (defaults to current year)
         """
         queryset = self.get_queryset()
         
@@ -70,7 +71,36 @@ class DocumentViewSet(viewsets.ModelViewSet):
         start_date = request.query_params.get('start_date', None)
         end_date = request.query_params.get('end_date', None)
         
+        # Check if any date filters are specified
+        has_date_filters = bool(date_filter or date or start_date or end_date)
+        
+        # Filter by year (defaults to current year only if no other date filters are specified)
         now = timezone.now()
+        year_param = request.query_params.get('year', None)
+        if year_param:
+            try:
+                year = int(year_param)
+                if year < 1900 or year > 2100:
+                    return Response(
+                        {'error': 'Invalid year. Must be between 1900 and 2100'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                # Apply year filter if explicitly provided
+                start_of_year = timezone.make_aware(datetime(year, 1, 1, 0, 0, 0))
+                end_of_year = timezone.make_aware(datetime(year + 1, 1, 1, 0, 0, 0))
+                queryset = queryset.filter(created_at__gte=start_of_year, created_at__lt=end_of_year)
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid year format. Must be a number'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        elif not has_date_filters:
+            # Default to current year only if no other date filters are specified
+            year = now.year
+            start_of_year = timezone.make_aware(datetime(year, 1, 1, 0, 0, 0))
+            end_of_year = timezone.make_aware(datetime(year + 1, 1, 1, 0, 0, 0))
+            queryset = queryset.filter(created_at__gte=start_of_year, created_at__lt=end_of_year)
+        
         date_filters = Q()
         
         if date_filter:
@@ -78,25 +108,19 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 # Today: from start of today to end of today
                 start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
                 end_of_day = start_of_day + timedelta(days=1)
-                start_timestamp = int(start_of_day.timestamp() * 1000)
-                end_timestamp = int(end_of_day.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+                date_filters = Q(created_at__gte=start_of_day, created_at__lt=end_of_day)
             
             elif date_filter == 'this_week':
                 # This week: from Monday of current week to end of Sunday
                 days_since_monday = now.weekday()
                 start_of_week = (now - timedelta(days=days_since_monday)).replace(hour=0, minute=0, second=0, microsecond=0)
                 end_of_week = start_of_week + timedelta(days=7)
-                start_timestamp = int(start_of_week.timestamp() * 1000)
-                end_timestamp = int(end_of_week.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+                date_filters = Q(created_at__gte=start_of_week, created_at__lt=end_of_week)
             
             elif date_filter == 'last_seven_days':
                 # Last 7 days: from 7 days ago to now
                 seven_days_ago = (now - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
-                start_timestamp = int(seven_days_ago.timestamp() * 1000)
-                end_timestamp = int(now.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lte=end_timestamp)
+                date_filters = Q(created_at__gte=seven_days_ago, created_at__lte=now)
             
             elif date_filter == 'this_month':
                 # This month: from first day of current month to end of last day
@@ -105,17 +129,13 @@ class DocumentViewSet(viewsets.ModelViewSet):
                     end_of_month = start_of_month.replace(year=now.year + 1, month=1)
                 else:
                     end_of_month = start_of_month.replace(month=now.month + 1)
-                start_timestamp = int(start_of_month.timestamp() * 1000)
-                end_timestamp = int(end_of_month.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+                date_filters = Q(created_at__gte=start_of_month, created_at__lt=end_of_month)
             
             elif date_filter == 'this_year':
                 # This year: from January 1st to end of December 31st
                 start_of_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
                 end_of_year = start_of_year.replace(year=now.year + 1)
-                start_timestamp = int(start_of_year.timestamp() * 1000)
-                end_timestamp = int(end_of_year.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+                date_filters = Q(created_at__gte=start_of_year, created_at__lt=end_of_year)
         
         elif date:
             # Specific date: YYYY-MM-DD format
@@ -123,9 +143,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 date_obj = datetime.strptime(date, '%Y-%m-%d').date()
                 start_of_day = timezone.make_aware(datetime.combine(date_obj, datetime.min.time()))
                 end_of_day = start_of_day + timedelta(days=1)
-                start_timestamp = int(start_of_day.timestamp() * 1000)
-                end_timestamp = int(end_of_day.timestamp() * 1000)
-                date_filters = Q(sunat_issue_time__gte=start_timestamp, sunat_issue_time__lt=end_timestamp)
+                date_filters = Q(created_at__gte=start_of_day, created_at__lt=end_of_day)
             except ValueError:
                 return Response(
                     {'error': 'Invalid date format. Use YYYY-MM-DD'},
@@ -140,8 +158,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 try:
                     start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
                     start_datetime = timezone.make_aware(datetime.combine(start_date_obj, datetime.min.time()))
-                    start_timestamp = int(start_datetime.timestamp() * 1000)
-                    range_filters.append(Q(sunat_issue_time__gte=start_timestamp))
+                    range_filters.append(Q(created_at__gte=start_datetime))
                 except ValueError:
                     return Response(
                         {'error': 'Invalid start_date format. Use YYYY-MM-DD'},
@@ -152,8 +169,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 try:
                     end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
                     end_datetime = timezone.make_aware(datetime.combine(end_date_obj, datetime.max.time()))
-                    end_timestamp = int(end_datetime.timestamp() * 1000)
-                    range_filters.append(Q(sunat_issue_time__lte=end_timestamp))
+                    range_filters.append(Q(created_at__lte=end_datetime))
                 except ValueError:
                     return Response(
                         {'error': 'Invalid end_date format. Use YYYY-MM-DD'},
@@ -171,14 +187,25 @@ class DocumentViewSet(viewsets.ModelViewSet):
         if date_filters:
             queryset = queryset.filter(date_filters)
         
+        # Calculate total amount from filtered queryset (before pagination)
+        total_amount = queryset.aggregate(
+            total=Sum('amount')
+        )['total'] or Decimal('0.00')
+        
         # Apply pagination
         page = self.paginate_queryset(queryset)
         if page is not None:
             serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+            response = self.get_paginated_response(serializer.data)
+            # Add total_amount to the response
+            response.data['total_amount'] = str(total_amount)
+            return response
         
         serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        return Response({
+            'results': serializer.data,
+            'total_amount': str(total_amount)
+        })
 
     @action(detail=False, methods=['get'], url_path='get-tickets')
     def get_tickets(self, request):
@@ -490,7 +517,7 @@ class DocumentViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=False, methods=['get'], url_path='sync-single', url_name='sync-single')
+    @action(detail=False, methods=['get', 'post'], url_path='sync-single', url_name='sync-single')
     def sync_single(self, request):
         """
         Sync a single document from Sunat API by sunat_id or document ID
