@@ -35,11 +35,13 @@ class OrderConsumer(AsyncWebsocketConsumer):
     
     async def order_update(self, event):
         """Send order update to WebSocket"""
-        # Send message to WebSocket
-        await self.send(text_data=json.dumps({
+        message_data = {
             'type': 'order_update',
-            'order_id': event['order_id'],
-            'status': event['status'],
-            'action': event['action'],  # 'removed', 'updated', 'added'
-        }))
+            'order_id': event.get('order_id'),
+            'status': event.get('status'),
+            'action': event.get('action'),  # 'removed', 'updated', 'added'
+        }
+        
+        # Send message to WebSocket
+        await self.send(text_data=json.dumps(message_data))
 

@@ -10,8 +10,6 @@ from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.utils.dateparse import parse_date
 from django.utils import timezone
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -85,56 +83,55 @@ class OrderViewSet(viewsets.ModelViewSet):
             created_by=user
         )
     
-    def _send_order_update(self, order_id, status, action):
-        """Send order update via WebSocket"""
-        try:
-            channel_layer = get_channel_layer()
-            if channel_layer:
-                async_to_sync(channel_layer.group_send)(
-                    'order_updates',
-                    {
-                        'type': 'order_update',
-                        'order_id': str(order_id),
-                        'status': status,
-                        'action': action,
-                    }
-                )
-        except Exception as e:
-            # Log error but don't fail the request
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.error(f"Failed to send WebSocket message: {e}")
-    
     def update(self, request, *args, **kwargs):
-        """Override update to create income transaction when status changes to HA or DO and send WebSocket updates"""
+        """Override update to create income transaction when status changes to HA or DO"""
         instance = self.get_object()
         old_status = instance.status
         
-        # Call parent update method
+        # Call parent update method - this will save the changes
         response = super().update(request, *args, **kwargs)
         
-        # Check if status changed
+        # Check if status changed and create transaction if needed
         instance.refresh_from_db()
         new_status = instance.status
         
-        if old_status != new_status:
-            # Send WebSocket update when order moves from IK to PA (remove from kitchen)
-            if old_status == 'IK' and new_status == 'PA':
-                self._send_order_update(instance.id, new_status, 'removed')
+        if old_status != new_status and new_status in ['HA', 'DO']:
+            # Check if transaction already exists for this order to avoid duplicates
+            order_number_in_description = f"Order {instance.order_number}"
+            existing_transaction = models.Transaction.objects.filter(
+                description__contains=order_number_in_description,
+                transaction_type='I'  # Only check income transactions
+            ).first()
             
-            # Create income transaction when status changes to HA or DO
-            if new_status in ['HA', 'DO']:
-                # Check if transaction already exists for this order to avoid duplicates
-                # We check by order number in description to prevent creating multiple transactions
-                order_number_in_description = f"Order {instance.order_number}"
-                existing_transaction = models.Transaction.objects.filter(
-                    description__contains=order_number_in_description,
-                    transaction_type='I'  # Only check income transactions
-                ).first()
-                
-                if not existing_transaction:
-                    # Create income transaction
-                    self._create_income_transaction(instance, request.user)
+            if not existing_transaction:
+                # Create income transaction
+                self._create_income_transaction(instance, request.user)
+        
+        return response
+    
+    def partial_update(self, request, *args, **kwargs):
+        """Override partial_update to create income transaction when status changes to HA or DO"""
+        instance = self.get_object()
+        old_status = instance.status
+        
+        # Call parent partial_update method - this will save the changes
+        response = super().partial_update(request, *args, **kwargs)
+        
+        # Check if status changed and create transaction if needed
+        instance.refresh_from_db()
+        new_status = instance.status
+        
+        if old_status != new_status and new_status in ['HA', 'DO']:
+            # Check if transaction already exists for this order to avoid duplicates
+            order_number_in_description = f"Order {instance.order_number}"
+            existing_transaction = models.Transaction.objects.filter(
+                description__contains=order_number_in_description,
+                transaction_type='I'  # Only check income transactions
+            ).first()
+            
+            if not existing_transaction:
+                # Create income transaction
+                self._create_income_transaction(instance, request.user)
         
         return response
 

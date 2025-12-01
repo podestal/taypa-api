@@ -127,6 +127,7 @@ class Order(models.Model):
             self.order_number = f"{today.strftime('%Y%m%d')}-{next_number}"
         
         # Track status changes and set timestamps
+        old_status = None
         if self.pk:  # Only check for status changes if order already exists
             try:
                 old_instance = Order.objects.get(pk=self.pk)
@@ -151,7 +152,47 @@ class Order(models.Model):
             except Order.DoesNotExist:
                 pass
         
+        # Save the order first
         super().save(*args, **kwargs)
+        
+        # Send WebSocket messages after save if status changed
+        if old_status is not None and old_status != self.status:
+            self._send_websocket_update(old_status, self.status)
+    
+    def _send_websocket_update(self, old_status, new_status):
+        """Send WebSocket update when order status changes"""
+        try:
+            from channels.layers import get_channel_layer
+            from asgiref.sync import async_to_sync
+            
+            channel_layer = get_channel_layer()
+            if channel_layer:
+                # Send WebSocket update when order status becomes IK (add to kitchen)
+                if new_status == 'IK':
+                    async_to_sync(channel_layer.group_send)(
+                        'order_updates',
+                        {
+                            'type': 'order_update',
+                            'order_id': str(self.id),
+                            'status': new_status,
+                            'action': 'added',
+                        }
+                    )
+                
+                # Send WebSocket update when order moves from IK to PA (remove from kitchen)
+                elif old_status == 'IK' and new_status == 'PA':
+                    async_to_sync(channel_layer.group_send)(
+                        'order_updates',
+                        {
+                            'type': 'order_update',
+                            'order_id': str(self.id),
+                            'status': new_status,
+                            'action': 'removed',
+                        }
+                    )
+        except Exception:
+            # Silently fail - don't break order saving if WebSocket fails
+            pass
     
     # Helper methods to calculate duration for each stage
     def get_current_stage_duration(self):

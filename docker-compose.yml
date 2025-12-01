@@ -19,8 +19,8 @@ services:
       - SUNAT_PERSONA_ID=${SUNAT_PERSONAL_ID}
       - SUNAT_PERSONA_TOKEN=${SUNAT_PERSONAL_TOKEN}
       - ENVIRONMENT=${ENVIRONMENT}
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
+      - REDIS_HOST=${REDIS_HOST}
+      - REDIS_PORT=${REDIS_PORT}
     depends_on:
       - db
       - redis
