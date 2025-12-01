@@ -1,4 +1,5 @@
 from datetime import date, timedelta, datetime
+from decimal import Decimal
 from rest_framework import viewsets
 from . import models, serializers
 from . import pagination
@@ -6,9 +7,9 @@ from rest_framework.decorators import action
 from django.db import connection
 from django.db.models import Prefetch
 from rest_framework.response import Response
-from django.db import transaction
 from rest_framework.permissions import IsAuthenticated
 from django.utils.dateparse import parse_date
+from django.utils import timezone
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -38,6 +39,76 @@ class OrderViewSet(viewsets.ModelViewSet):
     serializer_class = serializers.OrderSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
+    
+    def _get_default_account(self):
+        """Get the default account (first active account, or create one if none exists)"""
+        try:
+            account = models.Account.objects.filter(is_active=True).first()
+            if not account:
+                # Create a default account if none exists
+                account = models.Account.objects.create(
+                    name='Default Account',
+                    balance=Decimal('0.00'),
+                    account_type='CH',
+                    is_active=True
+                )
+            return account
+        except Exception:
+            # Fallback: create a default account
+            return models.Account.objects.create(
+                name='Default Account',
+                balance=Decimal('0.00'),
+                account_type='CH',
+                is_active=True
+            )
+    
+    def _calculate_order_total(self, order):
+        """Calculate total amount from order items"""
+        items = order.orderitem_set.all()
+        # item.price already includes the total for that item (price * quantity)
+        return sum(item.price for item in items)
+    
+    def _create_income_transaction(self, order, user):
+        """Create an income transaction for the order"""
+        account = self._get_default_account()
+        total_amount = self._calculate_order_total(order)
+        
+        # Create income transaction
+        models.Transaction.objects.create(
+            transaction_type='I',  # Income
+            account=account,
+            amount=total_amount,
+            description=f"Order {order.order_number} - {order.get_status_display()}",
+            transaction_date=date.today(),
+            created_by=user
+        )
+    
+    def update(self, request, *args, **kwargs):
+        """Override update to create income transaction when status changes to HA or DO"""
+        instance = self.get_object()
+        old_status = instance.status
+        
+        # Call parent update method
+        response = super().update(request, *args, **kwargs)
+        
+        # Check if status changed to HA or DO
+        instance.refresh_from_db()
+        new_status = instance.status
+        
+        if old_status != new_status and new_status in ['HA', 'DO']:
+            # Check if transaction already exists for this order to avoid duplicates
+            # We check by order number in description to prevent creating multiple transactions
+            order_number_in_description = f"Order {instance.order_number}"
+            existing_transaction = models.Transaction.objects.filter(
+                description__contains=order_number_in_description,
+                transaction_type='I'  # Only check income transactions
+            ).first()
+            
+            if not existing_transaction:
+                # Create income transaction
+                self._create_income_transaction(instance, request.user)
+        
+        return response
 
     @action(detail=False, methods=['get'])
     def in_kitchen(self, request):
@@ -57,7 +128,16 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not status:
             return Response({'error': 'status parameter is required'}, status=400)
         
-        orders = models.Order.objects.filter(status=status).select_related(
+        # Filter by today's date using timezone-aware datetime range
+        now = timezone.now()
+        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        end_of_day = start_of_day + timedelta(days=1)
+        
+        orders = models.Order.objects.filter(
+            status=status,
+            created_at__gte=start_of_day,
+            created_at__lt=end_of_day
+        ).select_related(
             'customer', 'address'
         ).prefetch_related(
             Prefetch(
@@ -190,7 +270,7 @@ class AddressViewSet(viewsets.ModelViewSet):
 class AccountViewSet(viewsets.ModelViewSet):
     queryset = models.Account.objects.all()
     serializer_class = serializers.AccountSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
 
 class TransactionViewSet(viewsets.ModelViewSet):
