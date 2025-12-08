@@ -164,3 +164,10 @@ SUNAT_API_URL = os.environ.get('SUNAT_API_URL', 'https://apisunat.com/api/docume
 SUNAT_DOCUMENTS_URL = os.environ.get('SUNAT_DOCUMENTS_URL', 'https://apisunat.com/api/documents/')
 SUNAT_PERSONA_ID = os.environ.get('SUNAT_PERSONA_ID')
 SUNAT_PERSONA_TOKEN = os.environ.get('SUNAT_PERSONA_TOKEN')
+
+# CLOUDFLARE SETUP
+
+CLOUDFLARE_R2_BUCKET = os.environ.get('CLOUDFLARE_R2_BUCKET')
+CLOUDFLARE_R2_ACCESS_KEY= os.environ.get('CLOUDFLARE_R2_ACCESS_KEY')
+CLOUDFLARE_R2_SECRET_KEY = os.environ.get('CLOUDFLARE_R2_SECRET_KEY')
+CLOUDFLARE_R2_ENDPOINT = os.environ.get('CLOUDFLARE_R2_ENDPOINT')
