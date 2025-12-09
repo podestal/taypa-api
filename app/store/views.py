@@ -22,6 +22,14 @@ class CategoryViewSet(viewsets.ModelViewSet):
             return [AllowAny()]
         return [IsAuthenticated()]
 
+    
+    @action(detail=False, methods=['get'])
+    def for_menu(self, request):
+        """Get categories for online menu"""
+        categories = self.queryset.filter(is_menu_category=True)
+        serializer = serializers.CategorySerializer(categories, many=True)
+        return Response(serializer.data)
+
 
 class DishViewSet(viewsets.ModelViewSet):
     queryset = models.Dish.objects.all()
