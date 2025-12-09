@@ -7,7 +7,7 @@ from rest_framework.decorators import action
 from django.db import connection
 from django.db.models import Prefetch
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils.dateparse import parse_date
 from django.utils import timezone
 
@@ -15,13 +15,23 @@ from django.utils import timezone
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = models.Category.objects.all()
     serializer_class = serializers.CategorySerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
+    
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
 
 class DishViewSet(viewsets.ModelViewSet):
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     @action(detail=False, methods=['get'])
     def by_category(self, request):
