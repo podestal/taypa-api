@@ -26,7 +26,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def for_menu(self, request):
         """Get categories for online menu"""
-        categories = self.queryset.filter(is_menu_category=True)
+        categories = self.queryset.filter(is_menu_category=True).order_by('id')
         serializer = serializers.CategorySerializer(categories, many=True)
         return Response(serializer.data)
 
