@@ -32,14 +32,21 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
 
 class DishViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for Dish model.
+    
+    Image uploads are automatically handled by Django's ImageField with R2Storage.
+    When creating or updating a dish with an image, the file is automatically
+    uploaded to Cloudflare R2 and the public URL is saved in the database.
+    """
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
     # permission_classes = [IsAuthenticated]
 
-    def get_permissions(self):
-        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
-            return [AllowAny()]
-        return [IsAuthenticated()]
+    # def get_permissions(self):
+    #     if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+    #         return [AllowAny()]
+    #     return [IsAuthenticated()]
 
     @action(detail=False, methods=['get'])
     def by_category(self, request):

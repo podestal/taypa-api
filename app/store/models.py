@@ -3,6 +3,17 @@ from django.conf import settings
 from django.utils import timezone
 from datetime import date, timedelta
 from taxes.models import Document
+from store.storage import R2Storage
+
+
+def get_r2_storage():
+    """Returns R2Storage if R2 is configured, otherwise None (uses default storage)"""
+    if (hasattr(settings, 'CLOUDFLARE_R2_ACCESS_KEY') and 
+        settings.CLOUDFLARE_R2_ACCESS_KEY and
+        hasattr(settings, 'CLOUDFLARE_R2_BUCKET') and 
+        settings.CLOUDFLARE_R2_BUCKET):
+        return R2Storage()
+    return None
 
 
 class Category(models.Model):
@@ -27,7 +38,12 @@ class Dish(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
     price = models.DecimalField(max_digits=10, decimal_places=2)
-    image = models.ImageField(upload_to='dishes/', blank=True, null=True)
+    image = models.ImageField(
+        upload_to='dishes/', 
+        storage=get_r2_storage(),
+        blank=True, 
+        null=True
+    )
     category = models.ForeignKey(Category, on_delete=models.PROTECT)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
