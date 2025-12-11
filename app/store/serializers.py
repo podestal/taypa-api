@@ -12,6 +12,27 @@ class DishSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Dish
         fields = '__all__'
+    
+    def to_representation(self, instance):
+        """Override to ensure image URL uses R2 storage URL"""
+        representation = super().to_representation(instance)
+        if instance.image:
+            # Force use of storage's url method to get the correct R2 URL
+            # This ensures we get the R2 public URL, not the local MEDIA_URL
+            try:
+                # Get the storage instance
+                storage = instance.image.storage
+                # Get the file name/path
+                file_name = instance.image.name
+                # Call the storage's url method directly
+                representation['image'] = storage.url(file_name)
+            except Exception as e:
+                # If URL generation fails, try fallback
+                try:
+                    representation['image'] = instance.image.url
+                except Exception:
+                    representation['image'] = None
+        return representation
 
 
 class OrderSerializer(serializers.ModelSerializer):

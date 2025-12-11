@@ -8,11 +8,14 @@ from store.storage import R2Storage
 
 def get_r2_storage():
     """Returns R2Storage if R2 is configured, otherwise None (uses default storage)"""
-    if (hasattr(settings, 'CLOUDFLARE_R2_ACCESS_KEY') and 
-        settings.CLOUDFLARE_R2_ACCESS_KEY and
-        hasattr(settings, 'CLOUDFLARE_R2_BUCKET') and 
-        settings.CLOUDFLARE_R2_BUCKET):
-        return R2Storage()
+    try:
+        if (hasattr(settings, 'CLOUDFLARE_R2_ACCESS_KEY') and 
+            settings.CLOUDFLARE_R2_ACCESS_KEY and
+            hasattr(settings, 'CLOUDFLARE_R2_BUCKET') and 
+            settings.CLOUDFLARE_R2_BUCKET):
+            return R2Storage()
+    except Exception:
+        pass
     return None
 
 
