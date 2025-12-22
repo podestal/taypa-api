@@ -41,7 +41,7 @@ class DishViewSet(viewsets.ModelViewSet):
     """
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
 
     # def get_permissions(self):
     #     if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
@@ -60,9 +60,9 @@ class DishViewSet(viewsets.ModelViewSet):
 
 
 class OrderViewSet(viewsets.ModelViewSet):
-    queryset = models.Order.objects.all()
+    queryset = models.Order.objects.order_by('-created_at').select_related('customer', 'address', 'document')
     serializer_class = serializers.OrderSerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
     
     def _get_default_account(self):
