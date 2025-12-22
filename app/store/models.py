@@ -108,6 +108,14 @@ class Order(models.Model):
         ('G', 'To Go'),
     ]
 
+    ORDER_PAYMENT_METHOD_CHOICES = [
+        ('EF', 'Efectivo'),
+        ('DC', 'Debit Card'),
+        ('CC', 'Credit Card'),
+        ('VW', 'Virtual Wallet'),
+        ('OT', 'Otro'),
+    ]
+
     order_type = models.CharField(max_length=2, choices=ORDER_TYPE_CHOICES, default='G')
     status = models.CharField(max_length=2, choices=ORDER_STATUS_CHOICES, default='IP')
     created_by = models.ForeignKey(
@@ -129,6 +137,7 @@ class Order(models.Model):
     delivered_at = models.DateTimeField(null=True, blank=True)
     cancelled_at = models.DateTimeField(null=True, blank=True)
     document = models.ForeignKey(Document, on_delete=models.SET_NULL, null=True, blank=True)
+    payment_method = models.CharField(max_length=2, choices=ORDER_PAYMENT_METHOD_CHOICES, default='VW')
 
     def save(self, *args, **kwargs):
         # Generate order number if not set
