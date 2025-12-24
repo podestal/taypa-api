@@ -41,12 +41,12 @@ class DishViewSet(viewsets.ModelViewSet):
     """
     queryset = models.Dish.objects.all()
     serializer_class = serializers.DishSerializer
-    permission_classes = [IsAuthenticated]
+    # permission_classes = [IsAuthenticated]
 
-    # def get_permissions(self):
-    #     if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
-    #         return [AllowAny()]
-    #     return [IsAuthenticated()]
+    def get_permissions(self):
+        if self.request.method in ['GET', 'HEAD', 'OPTIONS']:
+            return [AllowAny()]
+        return [IsAuthenticated()]
 
     @action(detail=False, methods=['get'])
     def by_category(self, request):
