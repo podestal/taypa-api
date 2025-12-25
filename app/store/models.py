@@ -379,3 +379,16 @@ class Transaction(models.Model):
             self.account.balance += self.amount
         self.account.save()
         super().delete(*args, **kwargs)
+
+
+class Points(models.Model):
+    """Represents a points system"""
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    points = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    is_active = models.BooleanField(default=True)
+
+    def __str__(self):
+        return self.name
