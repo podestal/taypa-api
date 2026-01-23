@@ -184,9 +184,9 @@ class OrderViewSet(viewsets.ModelViewSet):
         end_of_day = start_of_day + timedelta(days=1)
         
         orders = models.Order.objects.filter(
-            status=status,
-            created_at__gte=start_of_day,
-            created_at__lt=end_of_day
+            status=status
+            # created_at__gte=start_of_day,
+            # created_at__lt=end_of_day
         ).select_related(
             'customer', 'address'
         ).prefetch_related(
