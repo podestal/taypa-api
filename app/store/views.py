@@ -178,16 +178,20 @@ class OrderViewSet(viewsets.ModelViewSet):
         if not status:
             return Response({'error': 'status parameter is required'}, status=400)
         
-        # Filter by today's date using timezone-aware datetime range
-        now = timezone.now()
-        start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
-        end_of_day = start_of_day + timedelta(days=1)
+        # Base queryset filtered by status
+        orders = models.Order.objects.filter(status=status)
         
-        orders = models.Order.objects.filter(
-            status=status
-            # created_at__gte=start_of_day,
-            # created_at__lt=end_of_day
-        ).select_related(
+        # Only filter by today's date if status is "HA" (Handed) or "DO" (Delivered)
+        if status in ['HA', 'DO']:
+            now = timezone.now()
+            start_of_day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_of_day = start_of_day + timedelta(days=1)
+            orders = orders.filter(
+                created_at__gte=start_of_day,
+                created_at__lt=end_of_day
+            )
+        
+        orders = orders.select_related(
             'customer', 'address'
         ).prefetch_related(
             Prefetch(
