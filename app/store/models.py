@@ -293,7 +293,7 @@ class Transaction(models.Model):
         ('I', 'Income'),
         ('E', 'Expense'),
     ]
-    
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, related_name='transactions', null=True, blank=True)
     transaction_type = models.CharField(
         max_length=10,
         choices=TRANSACTION_TYPE_CHOICES
@@ -381,14 +381,14 @@ class Transaction(models.Model):
         super().delete(*args, **kwargs)
 
 
-class Points(models.Model):
-    """Represents a points system"""
-    name = models.CharField(max_length=255)
-    description = models.TextField(blank=True)
-    points = models.IntegerField()
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-    is_active = models.BooleanField(default=True)
+# class Points(models.Model):
+#     """Represents a points system"""
+#     name = models.CharField(max_length=255)
+#     description = models.TextField(blank=True)
+#     points = models.IntegerField()
+#     created_at = models.DateTimeField(auto_now_add=True)
+#     updated_at = models.DateTimeField(auto_now=True)
+#     is_active = models.BooleanField(default=True)
 
-    def __str__(self):
-        return self.name
+#     def __str__(self):
+#         return self.name

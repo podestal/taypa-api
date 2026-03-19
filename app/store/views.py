@@ -99,8 +99,10 @@ class OrderViewSet(viewsets.ModelViewSet):
         total_amount = self._calculate_order_total(order)
         
         # Create income transaction
+
         models.Transaction.objects.create(
             transaction_type='I',  # Income
+            order=order,
             account=account,
             amount=total_amount,
             description=f"Order {order.order_number} - {order.get_status_display()}",
