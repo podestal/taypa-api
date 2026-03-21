@@ -62,7 +62,7 @@ class DishViewSet(viewsets.ModelViewSet):
 class OrderViewSet(viewsets.ModelViewSet):
     queryset = models.Order.objects.order_by('-created_at').select_related('customer', 'address', 'document')
     serializer_class = serializers.OrderSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
     
     def _get_default_account(self):
@@ -332,7 +332,7 @@ class AccountViewSet(viewsets.ModelViewSet):
 class TransactionViewSet(viewsets.ModelViewSet):
     queryset = models.Transaction.objects.select_related('account', 'category').order_by('transaction_date')
     serializer_class = serializers.TransactionSerializer
-    # permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated]
     pagination_class = pagination.SimplePagination
 
     def list(self, request, *args, **kwargs):
