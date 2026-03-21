@@ -5,7 +5,7 @@ from . import models, serializers
 from . import pagination
 from rest_framework.decorators import action
 from django.db import connection
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Sum
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from django.utils.dateparse import parse_date
@@ -393,6 +393,183 @@ class TransactionViewSet(viewsets.ModelViewSet):
             return self.get_paginated_response(serializer.data)
         serializer = serializers.TransactionSerializer(transactions, many=True)
         return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """
+        Get aggregated transaction stats for dashboards.
+
+        Endpoint:
+        - GET /transactions/stats/
+
+        Query params:
+        - period: today | last7days | thisWeek | thisMonth | custom | all
+        - granularity: day | week | month | year
+        - start_date: YYYY-MM-DD (required when period=custom)
+        - end_date: YYYY-MM-DD (required when period=custom)
+        - currency: string (default PEN)
+        - timezone: string (default America/Lima)
+
+        Notes:
+        - income_vs_expense_by_day is bucketed according to granularity.
+        - granularity=year returns one bucket per month.
+        - expense_by_category only includes expense transactions.
+
+        Example:
+        - /transactions/stats/?period=all&granularity=year
+        """
+        period = request.query_params.get('period', 'thisMonth')
+        granularity = request.query_params.get('granularity', 'day')
+        currency = request.query_params.get('currency', 'PEN')
+        timezone_name = request.query_params.get('timezone', 'America/Lima')
+
+        if granularity not in ['day', 'week', 'month', 'year']:
+            return Response(
+                {'error': 'invalid granularity. Use day, week, month, or year'},
+                status=400
+            )
+
+        today = date.today()
+        start_date = None
+        end_date = today
+
+        if period == 'today':
+            start_date = today
+        elif period == 'last7days':
+            start_date = today - timedelta(days=6)
+        elif period == 'thisWeek':
+            start_date = today - timedelta(days=today.weekday())
+        elif period == 'thisMonth':
+            start_date = today.replace(day=1)
+        elif period == 'custom':
+            start_date_raw = request.query_params.get('start_date')
+            end_date_raw = request.query_params.get('end_date')
+            if not start_date_raw or not end_date_raw:
+                return Response({'error': 'start_date and end_date are required for custom period'}, status=400)
+
+            start_date = parse_date(start_date_raw)
+            end_date = parse_date(end_date_raw)
+            if not start_date or not end_date:
+                return Response({'error': 'Invalid date format. Use YYYY-MM-DD'}, status=400)
+            if start_date > end_date:
+                return Response({'error': 'start_date must be before or equal to end_date'}, status=400)
+        elif period == 'all':
+            first_transaction = models.Transaction.objects.order_by('transaction_date').first()
+            start_date = first_transaction.transaction_date if first_transaction else today
+        else:
+            return Response(
+                {'error': 'invalid period. Use today, last7days, thisWeek, thisMonth, custom, or all'},
+                status=400
+            )
+
+        transactions = models.Transaction.objects.select_related('category').filter(
+            transaction_date__gte=start_date,
+            transaction_date__lte=end_date
+        )
+
+        income_total = transactions.filter(transaction_type='I').aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        expense_total = transactions.filter(transaction_type='E').aggregate(total=Sum('amount'))['total'] or Decimal('0')
+        net_total = income_total - expense_total
+
+        def _month_start(value):
+            return value.replace(day=1)
+
+        def _next_month(value):
+            if value.month == 12:
+                return value.replace(year=value.year + 1, month=1, day=1)
+            return value.replace(month=value.month + 1, day=1)
+
+        def _bucket_start(value):
+            if granularity == 'day':
+                return value
+            if granularity == 'week':
+                return value - timedelta(days=value.weekday())
+            if granularity in ['month', 'year']:
+                return _month_start(value)
+            return value
+
+        def _bucket_step(value):
+            if granularity == 'day':
+                return value + timedelta(days=1)
+            if granularity == 'week':
+                return value + timedelta(days=7)
+            if granularity in ['month', 'year']:
+                return _next_month(value)
+            return value + timedelta(days=1)
+
+        start_bucket = _bucket_start(start_date)
+        end_bucket = _bucket_start(end_date)
+
+        bucket_map = {}
+        current_bucket = start_bucket
+        while current_bucket <= end_bucket:
+            bucket_map[current_bucket] = {
+                'date': current_bucket.isoformat(),
+                'income': Decimal('0'),
+                'expense': Decimal('0'),
+                'net': Decimal('0'),
+            }
+            current_bucket = _bucket_step(current_bucket)
+
+        for tx in transactions:
+            bucket_key = _bucket_start(tx.transaction_date)
+            bucket_entry = bucket_map.get(bucket_key)
+            if not bucket_entry:
+                continue
+            if tx.transaction_type == 'I':
+                bucket_entry['income'] += tx.amount
+            elif tx.transaction_type == 'E':
+                bucket_entry['expense'] += tx.amount
+            bucket_entry['net'] = bucket_entry['income'] - bucket_entry['expense']
+
+        income_vs_expense_by_day = []
+        for row in bucket_map.values():
+            income_vs_expense_by_day.append({
+                'date': row['date'],
+                'income': float(row['income']),
+                'expense': float(row['expense']),
+                'net': float(row['net']),
+            })
+
+        expenses_by_category_qs = transactions.filter(transaction_type='E').values(
+            'category_id',
+            'category__name'
+        ).annotate(
+            value=Sum('amount')
+        ).order_by('-value')
+
+        expense_by_category = []
+        for category_row in expenses_by_category_qs:
+            value = category_row['value'] or Decimal('0')
+            percentage = Decimal('0')
+            if expense_total > 0:
+                percentage = (value / expense_total) * Decimal('100')
+
+            expense_by_category.append({
+                'category_id': category_row['category_id'],
+                'category_name': category_row['category__name'] or 'Uncategorized',
+                'value': float(value),
+                'percentage': round(float(percentage), 2),
+            })
+
+        return Response({
+            'meta': {
+                'currency': currency,
+                'timezone': timezone_name,
+                'period': period,
+                'granularity': granularity,
+                'start_date': start_date.isoformat(),
+                'end_date': end_date.isoformat(),
+            },
+            'totals': {
+                'income': float(income_total),
+                'expense': float(expense_total),
+                'net': float(net_total),
+            },
+            'income_vs_expense_by_day': income_vs_expense_by_day,
+            'expense_by_category': expense_by_category,
+        })
+
     
     def perform_create(self, serializer):
         """Set created_by to the current user"""
