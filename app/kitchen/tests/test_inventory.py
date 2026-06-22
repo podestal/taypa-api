@@ -114,7 +114,7 @@ class TestInventoryReportAPI:
 
         product_response = authenticated_api_client.post(
             reverse('kitchen-product-list'),
-            {'name': 'Onions'},
+            {'name': '[TEST] Onions'},
             format='json',
         )
         product_id = product_response.data['id']

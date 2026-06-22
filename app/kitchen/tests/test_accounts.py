@@ -12,7 +12,7 @@ class TestAccountEdgeCases:
     def test_create_account_with_zero_balance(self, authenticated_api_client):
         response = authenticated_api_client.post(
             reverse('kitchen-account-list'),
-            {'name': 'Empty Petty Cash', 'balance': '0.00'},
+            {'name': '[TEST] Empty Petty Cash', 'balance': '0.00'},
             format='json',
         )
 

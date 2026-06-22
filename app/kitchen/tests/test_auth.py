@@ -22,37 +22,47 @@ class TestKitchenAuthentication:
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 
-    @pytest.mark.parametrize(
-        'url_name,method',
-        [
-            ('kitchen-product-list', 'post'),
-            ('kitchen-account-list', 'post'),
-            ('kitchen-transaction-list', 'post'),
-            ('kitchen-purchase-list', 'post'),
-        ],
-    )
-    def test_create_requires_authentication(self, api_client, account, product, url_name, method):
-        url = reverse(url_name)
-        payload = {}
+    def test_create_product_requires_authentication(self, api_client):
+        response = api_client.post(
+            reverse('kitchen-product-list'),
+            {'name': 'Onions'},
+            format='json',
+        )
 
-        if url_name == 'kitchen-product-list':
-            payload = {'name': 'Onions', 'quantity': '0.00'}
-        elif url_name == 'kitchen-account-list':
-            payload = {'name': 'Petty Cash', 'balance': '100.00'}
-        elif url_name == 'kitchen-transaction-list':
-            payload = {
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_account_requires_authentication(self, api_client):
+        response = api_client.post(
+            reverse('kitchen-account-list'),
+            {'name': 'Petty Cash', 'balance': '100.00'},
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_transaction_requires_authentication(self, api_client, account):
+        response = api_client.post(
+            reverse('kitchen-transaction-list'),
+            {
                 'transaction_type': 'I',
                 'account': account.id,
                 'amount': '25.00',
-            }
-        elif url_name == 'kitchen-purchase-list':
-            payload = {
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_create_purchase_requires_authentication(self, api_client, account, product):
+        response = api_client.post(
+            reverse('kitchen-purchase-list'),
+            {
                 'product': product.id,
                 'account': account.id,
                 'quantity_bought': '2.00',
                 'unit_price': '3.00',
-            }
-
-        response = getattr(api_client, method)(url, payload, format='json')
+            },
+            format='json',
+        )
 
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
