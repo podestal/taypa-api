@@ -15,7 +15,7 @@ class ProductViewSet(viewsets.ModelViewSet):
 
 
 class AccountViewSet(viewsets.ModelViewSet):
-    queryset = models.Account.objects.all()
+    queryset = models.Account.objects.filter(is_active=True)
     serializer_class = serializers.AccountSerializer
     permission_classes = [IsAuthenticated]
 

@@ -62,9 +62,15 @@ class TestAccountEdgeCases:
         account.refresh_from_db()
         assert account.balance == initial_balance + Decimal('100.00')
 
-    def test_deactivate_account_still_retrievable(self, authenticated_api_client, inactive_account):
+    def test_deactivate_account_hidden_from_list(self, authenticated_api_client, inactive_account):
+        response = authenticated_api_client.get(reverse('kitchen-account-list'))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert all(account['is_active'] for account in response.data)
+        assert inactive_account.id not in [account['id'] for account in response.data]
+
+    def test_inactive_account_not_retrievable(self, authenticated_api_client, inactive_account):
         url = reverse('kitchen-account-detail', kwargs={'pk': inactive_account.id})
         response = authenticated_api_client.get(url)
 
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data['is_active'] is False
+        assert response.status_code == status.HTTP_404_NOT_FOUND
