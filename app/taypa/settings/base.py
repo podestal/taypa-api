@@ -46,6 +46,7 @@ INSTALLED_APPS = [
     'core',
     'store',
     'taxes',
+    'kitchen',
 ]
 
 MIDDLEWARE = [

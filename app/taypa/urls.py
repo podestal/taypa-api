@@ -7,6 +7,7 @@ from django.contrib.staticfiles.views import serve
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('store.urls')),
+    path('kitchen/', include('kitchen.urls')),
     path('taxes/', include('taxes.urls')),
     path('auth/', include('djoser.urls')),
     path('auth/', include('djoser.urls.jwt')),

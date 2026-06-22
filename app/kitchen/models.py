@@ -1,0 +1,131 @@
+from datetime import date
+
+from django.conf import settings
+from django.db import models
+
+
+class Product(models.Model):
+    """
+    Represents an inventory product.
+    """
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    weight = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    volume = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
+class Account(models.Model):
+    """Kitchen cash or bank account used for inventory purchases."""
+
+    name = models.CharField(max_length=255)
+    balance = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.name} - ${self.balance}"
+
+
+class Transaction(models.Model):
+    """Financial movement that increases or decreases an account balance."""
+
+    TRANSACTION_TYPE_CHOICES = [
+        ('I', 'Income'),
+        ('E', 'Expense'),
+    ]
+
+    transaction_type = models.CharField(max_length=1, choices=TRANSACTION_TYPE_CHOICES)
+    account = models.ForeignKey(
+        Account,
+        on_delete=models.CASCADE,
+        related_name='transactions',
+    )
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    description = models.TextField(blank=True)
+    transaction_date = models.DateField(default=date.today)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kitchen_transactions',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-transaction_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.get_transaction_type_display()} - ${self.amount} - {self.transaction_date}"
+
+    def _apply_balance_change(self, transaction_type, amount, reverse=False, account=None):
+        if account is None:
+            account = Account.objects.get(pk=self.account_id)
+        multiplier = -1 if reverse else 1
+        if transaction_type == 'I':
+            account.balance += amount * multiplier
+        elif transaction_type == 'E':
+            account.balance -= amount * multiplier
+        account.save(update_fields=['balance', 'updated_at'])
+
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+
+        if is_new:
+            super().save(*args, **kwargs)
+            self._apply_balance_change(self.transaction_type, self.amount)
+            return
+
+        old_data = (
+            Transaction.objects.filter(pk=self.pk)
+            .values('transaction_type', 'amount', 'account_id')
+            .get()
+        )
+        old_account = Account.objects.get(pk=old_data['account_id'])
+        self._apply_balance_change(
+            old_data['transaction_type'],
+            old_data['amount'],
+            reverse=True,
+            account=old_account,
+        )
+        self._apply_balance_change(self.transaction_type, self.amount)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        self._apply_balance_change(self.transaction_type, self.amount, reverse=True)
+        super().delete(*args, **kwargs)
+
+
+class Purchase(models.Model):
+    """A single product purchase that updates inventory and account balance."""
+
+    product = models.ForeignKey(Product, on_delete=models.PROTECT, related_name='purchases')
+    quantity_bought = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name='purchase',
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.product.name} x {self.quantity_bought}"
+
+    @property
+    def subtotal(self):
+        return self.quantity_bought * self.unit_price
