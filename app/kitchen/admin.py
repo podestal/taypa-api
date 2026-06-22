@@ -38,3 +38,18 @@ class PurchaseAdmin(admin.ModelAdmin):
         'created_at',
     ]
     search_fields = ['product__name', 'notes']
+
+
+@admin.register(models.InventoryMovement)
+class InventoryMovementAdmin(admin.ModelAdmin):
+    list_display = [
+        'product',
+        'movement_type',
+        'quantity',
+        'source',
+        'movement_date',
+        'created_by',
+        'created_at',
+    ]
+    list_filter = ['movement_type', 'source', 'movement_date']
+    search_fields = ['product__name', 'notes']

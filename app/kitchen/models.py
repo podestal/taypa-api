@@ -129,3 +129,52 @@ class Purchase(models.Model):
     @property
     def subtotal(self):
         return self.quantity_bought * self.unit_price
+
+
+class InventoryMovement(models.Model):
+    """Ledger entry for every inventory change."""
+
+    MOVEMENT_TYPE_CHOICES = [
+        ('IN', 'In'),
+        ('OUT', 'Out'),
+    ]
+
+    SOURCE_CHOICES = [
+        ('PURCHASE', 'Purchase'),
+        ('USAGE', 'Usage'),
+        ('WASTE', 'Waste'),
+        ('ADJUSTMENT', 'Adjustment'),
+    ]
+
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name='inventory_movements',
+    )
+    movement_type = models.CharField(max_length=3, choices=MOVEMENT_TYPE_CHOICES)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    source = models.CharField(max_length=12, choices=SOURCE_CHOICES)
+    purchase = models.OneToOneField(
+        Purchase,
+        on_delete=models.CASCADE,
+        related_name='inventory_movement',
+        null=True,
+        blank=True,
+    )
+    movement_date = models.DateField(default=date.today)
+    notes = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='kitchen_inventory_movements',
+        null=True,
+        blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-movement_date', '-created_at']
+
+    def __str__(self):
+        return f"{self.get_movement_type_display()} {self.quantity} {self.product.name}"

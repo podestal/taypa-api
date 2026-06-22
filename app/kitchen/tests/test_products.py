@@ -20,17 +20,19 @@ class TestProductEdgeCases:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'name' in response.data
 
-    def test_create_product_with_zero_quantity(self, authenticated_api_client):
+    def test_create_product_defaults_quantity_to_zero(self, authenticated_api_client):
         response = authenticated_api_client.post(
             reverse('kitchen-product-list'),
-            {'name': 'Salt', 'quantity': '0.00'},
+            {'name': 'Salt'},
             format='json',
         )
 
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['quantity'] == '0.00'
 
-    def test_update_product_quantity_directly(self, authenticated_api_client, product):
+    def test_update_product_quantity_directly_is_not_allowed(
+        self, authenticated_api_client, product
+    ):
         url = reverse('kitchen-product-detail', kwargs={'pk': product.id})
         response = authenticated_api_client.patch(
             url,
@@ -40,7 +42,7 @@ class TestProductEdgeCases:
 
         assert response.status_code == status.HTTP_200_OK
         product.refresh_from_db()
-        assert product.quantity == Decimal('99.50')
+        assert product.quantity == Decimal('20.00')
 
     def test_delete_product_with_purchases_is_blocked(
         self, authenticated_api_client, purchase

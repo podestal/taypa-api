@@ -1,15 +1,16 @@
 from decimal import Decimal
 
 from django.db import transaction as db_transaction
+from django.utils import timezone
 import rest_framework.serializers as serializers
-from . import models
+from . import inventory, models
 
 
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Product
         fields = '__all__'
-        read_only_fields = ['created_at', 'updated_at']
+        read_only_fields = ['quantity', 'created_at', 'updated_at']
 
 
 class AccountSerializer(serializers.ModelSerializer):
@@ -26,6 +27,60 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = models.Transaction
         fields = '__all__'
         read_only_fields = ['created_at', 'updated_at']
+
+
+class InventoryMovementSerializer(serializers.ModelSerializer):
+    created_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
+
+    class Meta:
+        model = models.InventoryMovement
+        fields = [
+            'id',
+            'product',
+            'product_name',
+            'movement_type',
+            'quantity',
+            'source',
+            'purchase',
+            'movement_date',
+            'notes',
+            'created_by',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['purchase', 'created_at', 'updated_at']
+
+    def validate(self, attrs):
+        source = attrs.get('source', getattr(self.instance, 'source', None))
+        movement_type = attrs.get(
+            'movement_type',
+            getattr(self.instance, 'movement_type', None),
+        )
+        quantity = attrs.get('quantity', getattr(self.instance, 'quantity', None))
+
+        if quantity is not None and quantity <= 0:
+            raise serializers.ValidationError({'quantity': 'Quantity must be greater than zero.'})
+
+        if source == 'PURCHASE':
+            raise serializers.ValidationError(
+                {'source': 'Purchase movements are created automatically when recording a purchase.'},
+            )
+
+        if source in ('USAGE', 'WASTE') and movement_type != 'OUT':
+            raise serializers.ValidationError(
+                {'movement_type': 'Usage and waste movements must be type OUT.'},
+            )
+
+        return attrs
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        validated_data.setdefault('movement_date', timezone.localdate())
+        return inventory.create_inventory_movement(
+            created_by=user,
+            **validated_data,
+        )
 
 
 class PurchaseSerializer(serializers.ModelSerializer):
@@ -58,11 +113,6 @@ class PurchaseSerializer(serializers.ModelSerializer):
     def _get_subtotal(self, quantity_bought, unit_price):
         return Decimal(quantity_bought) * Decimal(unit_price)
 
-    def _apply_inventory_change(self, product, quantity, reverse=False):
-        multiplier = Decimal('-1') if reverse else Decimal('1')
-        product.quantity += quantity * multiplier
-        product.save(update_fields=['quantity', 'updated_at'])
-
     def _create_purchase_transaction(self, account, amount, product, notes, user):
         description = notes or f'Purchase: {product.name}'
         return models.Transaction.objects.create(
@@ -90,32 +140,27 @@ class PurchaseSerializer(serializers.ModelSerializer):
                 transaction=purchase_transaction,
                 **validated_data,
             )
-            self._apply_inventory_change(product, quantity_bought)
+            inventory.sync_purchase_movement(purchase, user)
         return purchase
 
     def update(self, instance, validated_data):
         account = validated_data.pop('account', None)
-        old_product = instance.product
-        old_quantity = instance.quantity_bought
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        new_product = instance.product
-        new_quantity = instance.quantity_bought
         new_amount = self._get_subtotal(instance.quantity_bought, instance.unit_price)
+        user = self.context['request'].user
 
         with db_transaction.atomic():
-            self._apply_inventory_change(old_product, old_quantity, reverse=True)
-
             purchase_transaction = instance.transaction
             purchase_transaction.amount = new_amount
-            purchase_transaction.description = instance.notes or f'Purchase: {new_product.name}'
+            purchase_transaction.description = instance.notes or f'Purchase: {instance.product.name}'
             if account:
                 purchase_transaction.account = account
             purchase_transaction.save()
 
             instance.save()
-            self._apply_inventory_change(new_product, new_quantity)
+            inventory.sync_purchase_movement(instance, user)
 
         return instance

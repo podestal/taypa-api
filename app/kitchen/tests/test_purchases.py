@@ -38,6 +38,10 @@ class TestKitchenPurchaseCreate:
         purchase = models.Purchase.objects.get(pk=response.data['id'])
         assert purchase.transaction_id == response.data['transaction']['id']
         assert models.Transaction.objects.filter(pk=purchase.transaction_id).exists()
+        assert hasattr(purchase, 'inventory_movement')
+        assert purchase.inventory_movement.movement_type == 'IN'
+        assert purchase.inventory_movement.source == 'PURCHASE'
+        assert purchase.inventory_movement.quantity == Decimal('10.00')
 
         product.refresh_from_db()
         account.refresh_from_db()
@@ -131,6 +135,10 @@ class TestKitchenPurchaseDelete:
         assert response.status_code == status.HTTP_204_NO_CONTENT
         assert not models.Purchase.objects.filter(pk=purchase_id).exists()
         assert not models.Transaction.objects.filter(pk=transaction_id).exists()
+        assert models.InventoryMovement.objects.filter(
+            product=product,
+            source='PURCHASE',
+        ).count() == 0
 
         product.refresh_from_db()
         account.refresh_from_db()
