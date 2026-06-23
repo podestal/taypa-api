@@ -53,12 +53,39 @@ def delete_inventory_movement(movement):
         movement.delete()
 
 
-def get_sale_stock_shortages(dish, quantity_sold):
+def _aggregate_sale_product_needs(dish, quantity_sold, sale_toppings=None):
     quantity_sold = Decimal(quantity_sold)
-    shortages = []
+    needed_by_product = {}
+
     for ingredient in dish.ingredients.select_related('product'):
-        needed = ingredient.quantity * quantity_sold
-        product = models.Product.objects.get(pk=ingredient.product_id)
+        product_id = ingredient.product_id
+        needed_by_product[product_id] = (
+            needed_by_product.get(product_id, Decimal('0'))
+            + ingredient.quantity * quantity_sold
+        )
+
+    if sale_toppings:
+        for sale_topping in sale_toppings:
+            topping = sale_topping['topping']
+            topping_qty = Decimal(sale_topping['quantity'])
+            product_id = topping.product_id
+            needed_by_product[product_id] = (
+                needed_by_product.get(product_id, Decimal('0'))
+                + topping.quantity * topping_qty
+            )
+
+    return needed_by_product
+
+
+def get_sale_stock_shortages(dish, quantity_sold, sale_toppings=None):
+    needed_by_product = _aggregate_sale_product_needs(
+        dish,
+        quantity_sold,
+        sale_toppings,
+    )
+    shortages = []
+    for product_id, needed in needed_by_product.items():
+        product = models.Product.objects.get(pk=product_id)
         if product.quantity < needed:
             shortages.append({
                 'product_id': product.id,
@@ -72,10 +99,21 @@ def get_sale_stock_shortages(dish, quantity_sold):
 def record_sale_movements(sale, created_by):
     movement_date = sale.transaction.transaction_date
     notes = sale.notes or f'Sale: {sale.dish.name}'
-    for ingredient in sale.dish.ingredients.select_related('product'):
-        quantity = ingredient.quantity * sale.quantity_sold
+    needed_by_product = _aggregate_sale_product_needs(
+        sale.dish,
+        sale.quantity_sold,
+        [
+            {
+                'topping': sale_topping.topping,
+                'quantity': sale_topping.quantity,
+            }
+            for sale_topping in sale.sale_toppings.select_related('topping')
+        ],
+    )
+    for product_id, quantity in needed_by_product.items():
+        product = models.Product.objects.get(pk=product_id)
         create_inventory_movement(
-            product=ingredient.product,
+            product=product,
             movement_type='OUT',
             quantity=quantity,
             source='SALE',

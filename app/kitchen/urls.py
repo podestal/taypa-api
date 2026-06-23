@@ -3,6 +3,7 @@ from rest_framework.routers import DefaultRouter
 from . import views
 
 router = DefaultRouter()
+router.register('toppings', views.ToppingViewSet, basename='kitchen-topping')
 router.register('categories', views.CategoryViewSet, basename='kitchen-category')
 router.register('dishes', views.DishViewSet, basename='kitchen-dish')
 router.register('dish-ingredients', views.DishIngredientViewSet, basename='kitchen-dish-ingredient')

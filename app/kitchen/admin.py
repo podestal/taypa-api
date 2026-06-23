@@ -27,10 +27,30 @@ class DishIngredientAdmin(admin.ModelAdmin):
     search_fields = ['dish__name', 'product__name']
 
 
+@admin.register(models.Topping)
+class ToppingAdmin(admin.ModelAdmin):
+    list_display = ['name', 'price', 'product', 'quantity', 'is_active', 'created_at']
+    list_filter = ['is_active']
+    search_fields = ['name', 'product__name']
+
+
+class SaleToppingInline(admin.TabularInline):
+    model = models.SaleTopping
+    extra = 0
+    readonly_fields = ['unit_price']
+
+
 @admin.register(models.Sale)
 class SaleAdmin(admin.ModelAdmin):
     list_display = ['dish', 'quantity_sold', 'unit_price', 'transaction', 'created_at']
     search_fields = ['dish__name', 'notes']
+    inlines = [SaleToppingInline]
+
+
+@admin.register(models.SaleTopping)
+class SaleToppingAdmin(admin.ModelAdmin):
+    list_display = ['sale', 'topping', 'quantity', 'unit_price']
+    search_fields = ['sale__dish__name', 'topping__name']
 
 
 @admin.register(models.Product)

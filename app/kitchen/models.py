@@ -59,6 +59,32 @@ class Dish(models.Model):
         return self.name
 
 
+class Topping(models.Model):
+    """Optional add-on for a dish (e.g. extra cheese) with its own price and inventory."""
+
+    name = models.CharField(max_length=255)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name='toppings',
+    )
+    quantity = models.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        help_text='Amount of product consumed per one topping unit.',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
 class DishIngredient(models.Model):
     """Amount of a product required to make one dish."""
 
@@ -217,8 +243,49 @@ class Sale(models.Model):
         return f'{self.dish.name} x {self.quantity_sold}'
 
     @property
-    def subtotal(self):
+    def dish_subtotal(self):
         return self.quantity_sold * self.unit_price
+
+    @property
+    def toppings_subtotal(self):
+        return sum(
+            sale_topping.quantity * sale_topping.unit_price
+            for sale_topping in self.sale_toppings.all()
+        )
+
+    @property
+    def subtotal(self):
+        return self.dish_subtotal + self.toppings_subtotal
+
+
+class SaleTopping(models.Model):
+    """Topping line on a sale with price snapshot at time of sale."""
+
+    sale = models.ForeignKey(
+        Sale,
+        on_delete=models.CASCADE,
+        related_name='sale_toppings',
+    )
+    topping = models.ForeignKey(
+        Topping,
+        on_delete=models.PROTECT,
+        related_name='sale_toppings',
+    )
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['sale', 'topping']
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.topping.name} x {self.quantity}'
+
+    @property
+    def subtotal(self):
+        return self.quantity * self.unit_price
 
 
 class InventoryMovement(models.Model):

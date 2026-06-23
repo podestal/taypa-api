@@ -88,13 +88,27 @@ class DishIngredientViewSet(viewsets.ModelViewSet):
         return queryset
 
 
+class ToppingViewSet(viewsets.ModelViewSet):
+    serializer_class = serializers.ToppingSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = models.Topping.objects.select_related('product')
+        if self.action == 'list':
+            queryset = queryset.filter(is_active=True)
+        return queryset
+
+
 class SaleViewSet(viewsets.ModelViewSet):
     queryset = models.Sale.objects.select_related(
         'dish',
         'dish__category',
         'transaction',
         'transaction__account',
-    ).prefetch_related('inventory_movements')
+    ).prefetch_related(
+        'inventory_movements',
+        'sale_toppings__topping',
+    )
     serializer_class = serializers.SaleSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'delete', 'head', 'options']

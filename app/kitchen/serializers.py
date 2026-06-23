@@ -239,6 +239,64 @@ class DishSerializer(serializers.ModelSerializer):
         return instance
 
 
+class ToppingSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+
+    class Meta:
+        model = models.Topping
+        fields = [
+            'id',
+            'name',
+            'price',
+            'product',
+            'product_name',
+            'quantity',
+            'is_active',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Quantity must be greater than zero.')
+        return value
+
+
+class SaleToppingSerializer(serializers.ModelSerializer):
+    topping_name = serializers.CharField(source='topping.name', read_only=True)
+    subtotal = serializers.SerializerMethodField()
+
+    class Meta:
+        model = models.SaleTopping
+        fields = [
+            'id',
+            'topping',
+            'topping_name',
+            'quantity',
+            'unit_price',
+            'subtotal',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['unit_price', 'created_at', 'updated_at']
+
+    def get_subtotal(self, obj):
+        return obj.subtotal
+
+
+class SaleToppingWriteSerializer(serializers.Serializer):
+    topping = serializers.PrimaryKeyRelatedField(
+        queryset=models.Topping.objects.filter(is_active=True),
+    )
+    quantity = serializers.DecimalField(max_digits=10, decimal_places=2)
+
+    def validate_quantity(self, value):
+        if value <= 0:
+            raise serializers.ValidationError('Quantity must be greater than zero.')
+        return value
+
+
 class SaleSerializer(serializers.ModelSerializer):
     account = serializers.PrimaryKeyRelatedField(
         queryset=models.Account.objects.filter(is_active=True),
@@ -246,7 +304,11 @@ class SaleSerializer(serializers.ModelSerializer):
     )
     transaction = TransactionSerializer(read_only=True)
     subtotal = serializers.SerializerMethodField()
+    dish_subtotal = serializers.SerializerMethodField()
+    toppings_subtotal = serializers.SerializerMethodField()
     dish_name = serializers.CharField(source='dish.name', read_only=True)
+    toppings = SaleToppingWriteSerializer(many=True, required=False, write_only=True)
+    sale_toppings = SaleToppingSerializer(many=True, read_only=True)
     unit_price = serializers.DecimalField(
         max_digits=10,
         decimal_places=2,
@@ -263,7 +325,11 @@ class SaleSerializer(serializers.ModelSerializer):
             'unit_price',
             'account',
             'transaction',
+            'dish_subtotal',
+            'toppings_subtotal',
             'subtotal',
+            'toppings',
+            'sale_toppings',
             'notes',
             'created_at',
             'updated_at',
@@ -273,22 +339,40 @@ class SaleSerializer(serializers.ModelSerializer):
     def get_subtotal(self, obj):
         return obj.subtotal
 
+    def get_dish_subtotal(self, obj):
+        return obj.dish_subtotal
+
+    def get_toppings_subtotal(self, obj):
+        return obj.toppings_subtotal
+
     def validate(self, attrs):
         dish = attrs.get('dish', getattr(self.instance, 'dish', None))
         quantity_sold = attrs.get(
             'quantity_sold',
             getattr(self.instance, 'quantity_sold', None),
         )
+        toppings_data = attrs.get('toppings', [])
 
         if dish and not dish.is_active:
             raise serializers.ValidationError({'dish': 'This dish is not active.'})
+
+        if toppings_data:
+            topping_ids = [item['topping'].id for item in toppings_data]
+            if len(topping_ids) != len(set(topping_ids)):
+                raise serializers.ValidationError(
+                    {'toppings': 'Duplicate toppings are not allowed on the same sale.'},
+                )
 
         if dish and quantity_sold is not None:
             if not dish.ingredients.exists():
                 raise serializers.ValidationError(
                     {'dish': 'This dish has no ingredients defined.'},
                 )
-            shortages = inventory.get_sale_stock_shortages(dish, quantity_sold)
+            shortages = inventory.get_sale_stock_shortages(
+                dish,
+                quantity_sold,
+                toppings_data,
+            )
             if shortages:
                 raise serializers.ValidationError({'stock': shortages})
 
@@ -296,11 +380,17 @@ class SaleSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         account = validated_data.pop('account')
+        toppings_data = validated_data.pop('toppings', [])
         dish = validated_data['dish']
         quantity_sold = validated_data['quantity_sold']
         unit_price = validated_data.pop('unit_price', dish.price)
         notes = validated_data.get('notes', '')
-        amount = Decimal(quantity_sold) * Decimal(unit_price)
+        dish_amount = Decimal(quantity_sold) * Decimal(unit_price)
+        toppings_amount = sum(
+            Decimal(item['quantity']) * Decimal(item['topping'].price)
+            for item in toppings_data
+        )
+        amount = dish_amount + toppings_amount
         user = self.context['request'].user
         description = notes or f'Sale: {dish.name}'
 
@@ -317,5 +407,12 @@ class SaleSerializer(serializers.ModelSerializer):
                 unit_price=unit_price,
                 **validated_data,
             )
+            for item in toppings_data:
+                models.SaleTopping.objects.create(
+                    sale=sale,
+                    topping=item['topping'],
+                    quantity=item['quantity'],
+                    unit_price=item['topping'].price,
+                )
             inventory.record_sale_movements(sale, user)
         return sale
