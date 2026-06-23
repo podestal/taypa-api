@@ -30,6 +30,42 @@ class TestProductEdgeCases:
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['quantity'] == '0.00'
 
+    def test_create_product_with_initial_quantity_creates_adjustment(
+        self, authenticated_api_client, user
+    ):
+        response = authenticated_api_client.post(
+            reverse('kitchen-product-list'),
+            {
+                'name': '[TEST] Flour',
+                'quantity': '25.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['quantity'] == '25.00'
+
+        product = models.Product.objects.get(pk=response.data['id'])
+        movement = models.InventoryMovement.objects.get(product=product)
+        assert movement.movement_type == 'IN'
+        assert movement.source == 'ADJUSTMENT'
+        assert movement.quantity == Decimal('25.00')
+        assert movement.created_by == user
+        assert movement.notes == 'Opening stock'
+
+    def test_create_product_rejects_negative_quantity(self, authenticated_api_client):
+        response = authenticated_api_client.post(
+            reverse('kitchen-product-list'),
+            {
+                'name': 'Bad Product',
+                'quantity': '-1.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'quantity' in response.data
+
     def test_update_product_quantity_directly_is_not_allowed(
         self, authenticated_api_client, product
     ):

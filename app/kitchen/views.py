@@ -5,7 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from . import inventory, models, serializers
+from . import finances, inventory, models, serializers
 
 
 class ProductViewSet(viewsets.ModelViewSet):
@@ -230,3 +230,44 @@ class InventoryCurrentView(APIView):
             for product in products
         ]
         return Response({'results': results})
+
+
+class FinanceReportView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        start_date = parse_date(request.query_params.get('start_date', ''))
+        end_date = parse_date(request.query_params.get('end_date', ''))
+        account_id = request.query_params.get('account_id')
+
+        if not start_date or not end_date:
+            return Response(
+                {'error': 'start_date and end_date query parameters are required.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if start_date > end_date:
+            return Response(
+                {'error': 'start_date must be on or before end_date.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if account_id:
+            if not models.Account.objects.filter(pk=account_id).exists():
+                return Response(
+                    {'error': 'Account not found.'},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+        report = finances.get_finance_report(start_date, end_date, account_id)
+        for row in report:
+            row['date'] = row['date'].isoformat()
+            for key in ('opening_balance', 'income', 'expenses', 'closing_balance'):
+                row[key] = f"{row[key]:.2f}"
+
+        return Response({
+            'start_date': start_date.isoformat(),
+            'end_date': end_date.isoformat(),
+            'account_id': int(account_id) if account_id else None,
+            'results': report,
+        })

@@ -7,10 +7,46 @@ from . import inventory, models
 
 
 class ProductSerializer(serializers.ModelSerializer):
+    quantity = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+        default=Decimal('0'),
+    )
+
     class Meta:
         model = models.Product
         fields = '__all__'
-        read_only_fields = ['quantity', 'created_at', 'updated_at']
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_fields(self):
+        fields = super().get_fields()
+        if self.instance is not None:
+            fields['quantity'].read_only = True
+        return fields
+
+    def validate_quantity(self, value):
+        if value < 0:
+            raise serializers.ValidationError('Quantity cannot be negative.')
+        return value
+
+    def create(self, validated_data):
+        initial_quantity = validated_data.pop('quantity', Decimal('0'))
+        user = self.context['request'].user
+
+        with db_transaction.atomic():
+            product = models.Product.objects.create(**validated_data)
+            if initial_quantity > 0:
+                inventory.create_inventory_movement(
+                    product=product,
+                    movement_type='IN',
+                    quantity=initial_quantity,
+                    source='ADJUSTMENT',
+                    notes='Opening stock',
+                    created_by=user,
+                )
+                product.refresh_from_db()
+        return product
 
 
 class AccountSerializer(serializers.ModelSerializer):

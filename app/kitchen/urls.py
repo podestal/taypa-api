@@ -17,5 +17,6 @@ router.register('inventory-movements', views.InventoryMovementViewSet, basename=
 urlpatterns = [
     path('inventory/report/', views.InventoryReportView.as_view(), name='kitchen-inventory-report'),
     path('inventory/current/', views.InventoryCurrentView.as_view(), name='kitchen-inventory-current'),
+    path('finance/report/', views.FinanceReportView.as_view(), name='kitchen-finance-report'),
     *router.urls,
 ]
