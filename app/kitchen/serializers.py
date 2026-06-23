@@ -43,13 +43,14 @@ class InventoryMovementSerializer(serializers.ModelSerializer):
             'quantity',
             'source',
             'purchase',
+            'sale',
             'movement_date',
             'notes',
             'created_by',
             'created_at',
             'updated_at',
         ]
-        read_only_fields = ['purchase', 'created_at', 'updated_at']
+        read_only_fields = ['purchase', 'sale', 'created_at', 'updated_at']
 
     def validate(self, attrs):
         source = attrs.get('source', getattr(self.instance, 'source', None))
@@ -65,6 +66,11 @@ class InventoryMovementSerializer(serializers.ModelSerializer):
         if source == 'PURCHASE':
             raise serializers.ValidationError(
                 {'source': 'Purchase movements are created automatically when recording a purchase.'},
+            )
+
+        if source == 'SALE':
+            raise serializers.ValidationError(
+                {'source': 'Sale movements are created automatically when recording a sale.'},
             )
 
         if source in ('USAGE', 'WASTE') and movement_type != 'OUT':
@@ -164,3 +170,152 @@ class PurchaseSerializer(serializers.ModelSerializer):
             inventory.sync_purchase_movement(instance, user)
 
         return instance
+
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Category
+        fields = '__all__'
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class DishIngredientSerializer(serializers.ModelSerializer):
+    product_name = serializers.CharField(source='product.name', read_only=True)
+
+    class Meta:
+        model = models.DishIngredient
+        fields = [
+            'id',
+            'product',
+            'product_name',
+            'quantity',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+
+class DishSerializer(serializers.ModelSerializer):
+    ingredients = DishIngredientSerializer(many=True, required=False)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+
+    class Meta:
+        model = models.Dish
+        fields = [
+            'id',
+            'name',
+            'description',
+            'price',
+            'category',
+            'category_name',
+            'is_active',
+            'ingredients',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def _sync_ingredients(self, dish, ingredients_data):
+        dish.ingredients.all().delete()
+        for ingredient in ingredients_data:
+            models.DishIngredient.objects.create(dish=dish, **ingredient)
+
+    def create(self, validated_data):
+        ingredients_data = validated_data.pop('ingredients', [])
+        with db_transaction.atomic():
+            dish = models.Dish.objects.create(**validated_data)
+            for ingredient in ingredients_data:
+                models.DishIngredient.objects.create(dish=dish, **ingredient)
+        return dish
+
+    def update(self, instance, validated_data):
+        ingredients_data = validated_data.pop('ingredients', None)
+        with db_transaction.atomic():
+            for attr, value in validated_data.items():
+                setattr(instance, attr, value)
+            instance.save()
+            if ingredients_data is not None:
+                self._sync_ingredients(instance, ingredients_data)
+        return instance
+
+
+class SaleSerializer(serializers.ModelSerializer):
+    account = serializers.PrimaryKeyRelatedField(
+        queryset=models.Account.objects.filter(is_active=True),
+        write_only=True,
+    )
+    transaction = TransactionSerializer(read_only=True)
+    subtotal = serializers.SerializerMethodField()
+    dish_name = serializers.CharField(source='dish.name', read_only=True)
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+
+    class Meta:
+        model = models.Sale
+        fields = [
+            'id',
+            'dish',
+            'dish_name',
+            'quantity_sold',
+            'unit_price',
+            'account',
+            'transaction',
+            'subtotal',
+            'notes',
+            'created_at',
+            'updated_at',
+        ]
+        read_only_fields = ['created_at', 'updated_at']
+
+    def get_subtotal(self, obj):
+        return obj.subtotal
+
+    def validate(self, attrs):
+        dish = attrs.get('dish', getattr(self.instance, 'dish', None))
+        quantity_sold = attrs.get(
+            'quantity_sold',
+            getattr(self.instance, 'quantity_sold', None),
+        )
+
+        if dish and not dish.is_active:
+            raise serializers.ValidationError({'dish': 'This dish is not active.'})
+
+        if dish and quantity_sold is not None:
+            if not dish.ingredients.exists():
+                raise serializers.ValidationError(
+                    {'dish': 'This dish has no ingredients defined.'},
+                )
+            shortages = inventory.get_sale_stock_shortages(dish, quantity_sold)
+            if shortages:
+                raise serializers.ValidationError({'stock': shortages})
+
+        return attrs
+
+    def create(self, validated_data):
+        account = validated_data.pop('account')
+        dish = validated_data['dish']
+        quantity_sold = validated_data['quantity_sold']
+        unit_price = validated_data.pop('unit_price', dish.price)
+        notes = validated_data.get('notes', '')
+        amount = Decimal(quantity_sold) * Decimal(unit_price)
+        user = self.context['request'].user
+        description = notes or f'Sale: {dish.name}'
+
+        with db_transaction.atomic():
+            sale_transaction = models.Transaction.objects.create(
+                transaction_type='I',
+                account=account,
+                amount=amount,
+                description=description,
+                created_by=user,
+            )
+            sale = models.Sale.objects.create(
+                transaction=sale_transaction,
+                unit_price=unit_price,
+                **validated_data,
+            )
+            inventory.record_sale_movements(sale, user)
+        return sale

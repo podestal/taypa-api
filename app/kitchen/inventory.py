@@ -27,6 +27,7 @@ def create_inventory_movement(
     movement_date=None,
     notes='',
     purchase=None,
+    sale=None,
     created_by=None,
 ):
     movement_date = movement_date or timezone.localdate()
@@ -40,6 +41,7 @@ def create_inventory_movement(
             movement_date=movement_date,
             notes=notes,
             purchase=purchase,
+            sale=sale,
             created_by=created_by,
         )
 
@@ -49,6 +51,44 @@ def delete_inventory_movement(movement):
         opposite = 'OUT' if movement.movement_type == 'IN' else 'IN'
         apply_quantity_change(movement.product, opposite, movement.quantity)
         movement.delete()
+
+
+def get_sale_stock_shortages(dish, quantity_sold):
+    quantity_sold = Decimal(quantity_sold)
+    shortages = []
+    for ingredient in dish.ingredients.select_related('product'):
+        needed = ingredient.quantity * quantity_sold
+        product = models.Product.objects.get(pk=ingredient.product_id)
+        if product.quantity < needed:
+            shortages.append({
+                'product_id': product.id,
+                'product_name': product.name,
+                'needed': str(needed),
+                'available': str(product.quantity),
+            })
+    return shortages
+
+
+def record_sale_movements(sale, created_by):
+    movement_date = sale.transaction.transaction_date
+    notes = sale.notes or f'Sale: {sale.dish.name}'
+    for ingredient in sale.dish.ingredients.select_related('product'):
+        quantity = ingredient.quantity * sale.quantity_sold
+        create_inventory_movement(
+            product=ingredient.product,
+            movement_type='OUT',
+            quantity=quantity,
+            source='SALE',
+            movement_date=movement_date,
+            notes=notes,
+            sale=sale,
+            created_by=created_by,
+        )
+
+
+def delete_sale_movements(sale):
+    for movement in list(sale.inventory_movements.all()):
+        delete_inventory_movement(movement)
 
 
 def sync_purchase_movement(purchase, created_by):

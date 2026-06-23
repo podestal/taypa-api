@@ -40,7 +40,71 @@ class TransactionViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if hasattr(instance, 'sale'):
+            return Response(
+                {
+                    'error': (
+                        'Cannot delete a transaction linked to a sale. '
+                        'Delete the sale instead.'
+                    ),
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         return super().destroy(request, *args, **kwargs)
+
+
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = models.Category.objects.filter(is_active=True)
+    serializer_class = serializers.CategorySerializer
+    permission_classes = [IsAuthenticated]
+
+
+class DishViewSet(viewsets.ModelViewSet):
+    serializer_class = serializers.DishSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = models.Dish.objects.select_related('category').prefetch_related(
+            'ingredients__product',
+        )
+        category_id = self.request.query_params.get('category_id')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+        if self.action == 'list':
+            queryset = queryset.filter(is_active=True)
+        return queryset
+
+
+class DishIngredientViewSet(viewsets.ModelViewSet):
+    queryset = models.DishIngredient.objects.select_related('dish', 'product')
+    serializer_class = serializers.DishIngredientSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        dish_id = self.request.query_params.get('dish_id')
+        if dish_id:
+            queryset = queryset.filter(dish_id=dish_id)
+        return queryset
+
+
+class SaleViewSet(viewsets.ModelViewSet):
+    queryset = models.Sale.objects.select_related(
+        'dish',
+        'dish__category',
+        'transaction',
+        'transaction__account',
+    ).prefetch_related('inventory_movements')
+    serializer_class = serializers.SaleSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def perform_destroy(self, instance):
+        with db_transaction.atomic():
+            inventory.delete_sale_movements(instance)
+            sale_transaction = instance.transaction
+            instance.delete()
+            sale_transaction.delete()
 
 
 class PurchaseViewSet(viewsets.ModelViewSet):

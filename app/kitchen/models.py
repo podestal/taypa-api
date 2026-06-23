@@ -20,6 +20,70 @@ class Product(models.Model):
         return self.name
 
 
+class Category(models.Model):
+    """Menu category for kitchen dishes."""
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+        verbose_name_plural = 'categories'
+
+    def __str__(self):
+        return self.name
+
+
+class Dish(models.Model):
+    """Sellable menu item with a recipe defined by dish ingredients."""
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    category = models.ForeignKey(
+        Category,
+        on_delete=models.PROTECT,
+        related_name='dishes',
+    )
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['name']
+
+    def __str__(self):
+        return self.name
+
+
+class DishIngredient(models.Model):
+    """Amount of a product required to make one dish."""
+
+    dish = models.ForeignKey(
+        Dish,
+        on_delete=models.CASCADE,
+        related_name='ingredients',
+    )
+    product = models.ForeignKey(
+        Product,
+        on_delete=models.PROTECT,
+        related_name='dish_ingredients',
+    )
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ['dish', 'product']
+        ordering = ['id']
+
+    def __str__(self):
+        return f'{self.dish.name}: {self.quantity} x {self.product.name}'
+
+
 class Account(models.Model):
     """Kitchen cash or bank account used for inventory purchases."""
 
@@ -131,6 +195,32 @@ class Purchase(models.Model):
         return self.quantity_bought * self.unit_price
 
 
+class Sale(models.Model):
+    """Records a dish sale: income to account and inventory out per ingredient."""
+
+    dish = models.ForeignKey(Dish, on_delete=models.PROTECT, related_name='sales')
+    quantity_sold = models.DecimalField(max_digits=10, decimal_places=2)
+    unit_price = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction = models.OneToOneField(
+        Transaction,
+        on_delete=models.PROTECT,
+        related_name='sale',
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.dish.name} x {self.quantity_sold}'
+
+    @property
+    def subtotal(self):
+        return self.quantity_sold * self.unit_price
+
+
 class InventoryMovement(models.Model):
     """Ledger entry for every inventory change."""
 
@@ -141,6 +231,7 @@ class InventoryMovement(models.Model):
 
     SOURCE_CHOICES = [
         ('PURCHASE', 'Purchase'),
+        ('SALE', 'Sale'),
         ('USAGE', 'Usage'),
         ('WASTE', 'Waste'),
         ('ADJUSTMENT', 'Adjustment'),
@@ -158,6 +249,13 @@ class InventoryMovement(models.Model):
         Purchase,
         on_delete=models.CASCADE,
         related_name='inventory_movement',
+        null=True,
+        blank=True,
+    )
+    sale = models.ForeignKey(
+        Sale,
+        on_delete=models.CASCADE,
+        related_name='inventory_movements',
         null=True,
         blank=True,
     )

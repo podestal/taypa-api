@@ -2,6 +2,37 @@ from django.contrib import admin
 from . import models
 
 
+@admin.register(models.Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ['name', 'is_active', 'created_at']
+    search_fields = ['name']
+
+
+class DishIngredientInline(admin.TabularInline):
+    model = models.DishIngredient
+    extra = 1
+
+
+@admin.register(models.Dish)
+class DishAdmin(admin.ModelAdmin):
+    list_display = ['name', 'category', 'price', 'is_active', 'created_at']
+    list_filter = ['category', 'is_active']
+    search_fields = ['name']
+    inlines = [DishIngredientInline]
+
+
+@admin.register(models.DishIngredient)
+class DishIngredientAdmin(admin.ModelAdmin):
+    list_display = ['dish', 'product', 'quantity']
+    search_fields = ['dish__name', 'product__name']
+
+
+@admin.register(models.Sale)
+class SaleAdmin(admin.ModelAdmin):
+    list_display = ['dish', 'quantity_sold', 'unit_price', 'transaction', 'created_at']
+    search_fields = ['dish__name', 'notes']
+
+
 @admin.register(models.Product)
 class ProductAdmin(admin.ModelAdmin):
     list_display = ['name', 'quantity', 'weight', 'volume', 'created_at', 'updated_at']
