@@ -1,4 +1,5 @@
 import pytest
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.urls import reverse
@@ -107,6 +108,29 @@ class TestKitchenSaleAPI:
         assert account.balance == initial_balance + Decimal('30.00')
         assert product.quantity == initial_quantity - Decimal('2.00')
 
+    def test_create_sale_with_custom_date(
+        self, authenticated_api_client, dish_with_recipe, account, product
+    ):
+        sale_date = date.today() - timedelta(days=3)
+
+        response = authenticated_api_client.post(
+            reverse('kitchen-sale-list'),
+            {
+                'dish': dish_with_recipe.id,
+                'account': account.id,
+                'quantity_sold': '1.00',
+                'sale_date': str(sale_date),
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['transaction']['transaction_date'] == str(sale_date)
+
+        sale = models.Sale.objects.get(pk=response.data['id'])
+        movement = sale.inventory_movements.get()
+        assert movement.movement_date == sale_date
+
     def test_create_sale_fails_when_insufficient_stock(
         self, authenticated_api_client, dish_with_recipe, account, product
     ):
@@ -158,3 +182,131 @@ class TestKitchenSaleAPI:
         product.refresh_from_db()
         assert account.balance == balance_after_sale - Decimal('30.00')
         assert product.quantity == quantity_after_sale + Decimal('2.00')
+
+
+@pytest.mark.django_db
+class TestKitchenSaleListFilters:
+    @pytest.fixture
+    def other_category(self, db):
+        return baker.make(
+            models.Category,
+            name='[TEST] Drinks',
+            is_active=True,
+        )
+
+    @pytest.fixture
+    def other_dish(self, db, other_category, product):
+        dish = baker.make(
+            models.Dish,
+            name='[TEST] Soda',
+            price=Decimal('5.00'),
+            category=other_category,
+            is_active=True,
+        )
+        baker.make(
+            models.DishIngredient,
+            dish=dish,
+            product=product,
+            quantity=Decimal('1.00'),
+        )
+        return dish
+
+    def _create_sale(self, client, dish, account, sale_date, quantity_sold='1.00'):
+        response = client.post(
+            reverse('kitchen-sale-list'),
+            {
+                'dish': dish.id,
+                'account': account.id,
+                'quantity_sold': quantity_sold,
+                'sale_date': str(sale_date),
+            },
+            format='json',
+        )
+        assert response.status_code == status.HTTP_201_CREATED
+        return response.data['id']
+
+    def test_list_sales_by_date(
+        self, authenticated_api_client, dish_with_recipe, other_dish, account
+    ):
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+
+        burger_sale_id = self._create_sale(
+            authenticated_api_client, dish_with_recipe, account, yesterday
+        )
+        self._create_sale(authenticated_api_client, other_dish, account, today)
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-sale-list'),
+            {'date': str(yesterday)},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == burger_sale_id
+
+    def test_list_sales_by_date_range(
+        self, authenticated_api_client, dish_with_recipe, other_dish, account
+    ):
+        today = date.today()
+        two_days_ago = today - timedelta(days=2)
+        yesterday = today - timedelta(days=1)
+
+        self._create_sale(
+            authenticated_api_client, dish_with_recipe, account, two_days_ago
+        )
+        middle_sale_id = self._create_sale(
+            authenticated_api_client, dish_with_recipe, account, yesterday
+        )
+        self._create_sale(authenticated_api_client, other_dish, account, today)
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-sale-list'),
+            {
+                'start_date': str(yesterday),
+                'end_date': str(today),
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+        sale_ids = {row['id'] for row in response.data}
+        assert middle_sale_id in sale_ids
+
+    def test_list_sales_by_dish(
+        self, authenticated_api_client, dish_with_recipe, other_dish, account
+    ):
+        today = date.today()
+
+        burger_sale_id = self._create_sale(
+            authenticated_api_client, dish_with_recipe, account, today
+        )
+        self._create_sale(authenticated_api_client, other_dish, account, today)
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-sale-list'),
+            {'dish_id': dish_with_recipe.id},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == burger_sale_id
+
+    def test_list_sales_by_category(
+        self, authenticated_api_client, dish_with_recipe, other_dish, account, category
+    ):
+        today = date.today()
+
+        burger_sale_id = self._create_sale(
+            authenticated_api_client, dish_with_recipe, account, today
+        )
+        self._create_sale(authenticated_api_client, other_dish, account, today)
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-sale-list'),
+            {'category_id': category.id},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == burger_sale_id

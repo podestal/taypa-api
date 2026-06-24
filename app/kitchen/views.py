@@ -100,18 +100,40 @@ class ToppingViewSet(viewsets.ModelViewSet):
 
 
 class SaleViewSet(viewsets.ModelViewSet):
-    queryset = models.Sale.objects.select_related(
-        'dish',
-        'dish__category',
-        'transaction',
-        'transaction__account',
-    ).prefetch_related(
-        'inventory_movements',
-        'sale_toppings__topping',
-    )
     serializer_class = serializers.SaleSerializer
     permission_classes = [IsAuthenticated]
     http_method_names = ['get', 'post', 'delete', 'head', 'options']
+
+    def get_queryset(self):
+        queryset = models.Sale.objects.select_related(
+            'dish',
+            'dish__category',
+            'transaction',
+            'transaction__account',
+        ).prefetch_related(
+            'inventory_movements',
+            'sale_toppings__topping',
+        )
+
+        dish_id = self.request.query_params.get('dish_id')
+        category_id = self.request.query_params.get('category_id')
+        sale_date = self.request.query_params.get('date')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if dish_id:
+            queryset = queryset.filter(dish_id=dish_id)
+        if category_id:
+            queryset = queryset.filter(dish__category_id=category_id)
+        if sale_date:
+            queryset = queryset.filter(transaction__transaction_date=sale_date)
+        else:
+            if start_date:
+                queryset = queryset.filter(transaction__transaction_date__gte=start_date)
+            if end_date:
+                queryset = queryset.filter(transaction__transaction_date__lte=end_date)
+
+        return queryset
 
     def perform_destroy(self, instance):
         with db_transaction.atomic():

@@ -350,6 +350,7 @@ class SaleSerializer(serializers.ModelSerializer):
         decimal_places=2,
         required=False,
     )
+    sale_date = serializers.DateField(required=False, write_only=True)
 
     class Meta:
         model = models.Sale
@@ -366,6 +367,7 @@ class SaleSerializer(serializers.ModelSerializer):
             'subtotal',
             'toppings',
             'sale_toppings',
+            'sale_date',
             'notes',
             'created_at',
             'updated_at',
@@ -417,6 +419,7 @@ class SaleSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         account = validated_data.pop('account')
         toppings_data = validated_data.pop('toppings', [])
+        sale_date = validated_data.pop('sale_date', timezone.localdate())
         dish = validated_data['dish']
         quantity_sold = validated_data['quantity_sold']
         unit_price = validated_data.pop('unit_price', dish.price)
@@ -436,6 +439,7 @@ class SaleSerializer(serializers.ModelSerializer):
                 account=account,
                 amount=amount,
                 description=description,
+                transaction_date=sale_date,
                 created_by=user,
             )
             sale = models.Sale.objects.create(
