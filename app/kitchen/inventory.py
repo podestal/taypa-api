@@ -10,6 +10,8 @@ from . import models
 
 def apply_quantity_change(product, movement_type, quantity):
     product = models.Product.objects.get(pk=product.pk)
+    if not product.tracks_inventory:
+        return
     quantity = Decimal(quantity)
     if movement_type == 'IN':
         product.quantity += quantity
@@ -30,6 +32,10 @@ def create_inventory_movement(
     sale=None,
     created_by=None,
 ):
+    product = models.Product.objects.get(pk=product.pk)
+    if not product.tracks_inventory:
+        return None
+
     movement_date = movement_date or timezone.localdate()
     with db_transaction.atomic():
         apply_quantity_change(product, movement_type, quantity)
@@ -48,9 +54,17 @@ def create_inventory_movement(
 
 def delete_inventory_movement(movement):
     with db_transaction.atomic():
-        opposite = 'OUT' if movement.movement_type == 'IN' else 'IN'
-        apply_quantity_change(movement.product, opposite, movement.quantity)
+        if movement.product.tracks_inventory:
+            opposite = 'OUT' if movement.movement_type == 'IN' else 'IN'
+            apply_quantity_change(movement.product, opposite, movement.quantity)
         movement.delete()
+
+
+def _product_tracks_inventory(product_id):
+    return models.Product.objects.filter(
+        pk=product_id,
+        product_type=models.Product.TYPE_INGREDIENT,
+    ).exists()
 
 
 def _aggregate_sale_product_needs(dish, quantity_sold, sale_toppings=None):
@@ -58,6 +72,8 @@ def _aggregate_sale_product_needs(dish, quantity_sold, sale_toppings=None):
     needed_by_product = {}
 
     for ingredient in dish.ingredients.select_related('product'):
+        if not ingredient.product.tracks_inventory:
+            continue
         product_id = ingredient.product_id
         needed_by_product[product_id] = (
             needed_by_product.get(product_id, Decimal('0'))
@@ -67,6 +83,8 @@ def _aggregate_sale_product_needs(dish, quantity_sold, sale_toppings=None):
     if sale_toppings:
         for sale_topping in sale_toppings:
             topping = sale_topping['topping']
+            if not topping.product.tracks_inventory:
+                continue
             topping_qty = Decimal(sale_topping['quantity'])
             product_id = topping.product_id
             needed_by_product[product_id] = (
@@ -111,6 +129,8 @@ def record_sale_movements(sale, created_by):
         ],
     )
     for product_id, quantity in needed_by_product.items():
+        if not _product_tracks_inventory(product_id):
+            continue
         product = models.Product.objects.get(pk=product_id)
         create_inventory_movement(
             product=product,
@@ -130,6 +150,11 @@ def delete_sale_movements(sale):
 
 
 def sync_purchase_movement(purchase, created_by):
+    if not purchase.product.tracks_inventory:
+        if hasattr(purchase, 'inventory_movement'):
+            delete_inventory_movement(purchase.inventory_movement)
+        return None
+
     movement_date = purchase.transaction.transaction_date
     notes = purchase.notes or f'Purchase: {purchase.product.name}'
 
@@ -167,7 +192,9 @@ def _balance_from_movements(movements):
 
 
 def get_inventory_report(start_date, end_date, product_id=None):
-    products = models.Product.objects.all().order_by('name')
+    products = models.Product.objects.filter(
+        product_type=models.Product.TYPE_INGREDIENT,
+    ).order_by('name')
     if product_id:
         products = products.filter(pk=product_id)
 

@@ -25,6 +25,18 @@ class ProductSerializer(serializers.ModelSerializer):
             fields['quantity'].read_only = True
         return fields
 
+    def validate(self, attrs):
+        product_type = attrs.get(
+            'product_type',
+            getattr(self.instance, 'product_type', models.Product.TYPE_INGREDIENT),
+        )
+        quantity = attrs.get('quantity', Decimal('0'))
+        if product_type != models.Product.TYPE_INGREDIENT and quantity > 0:
+            raise serializers.ValidationError(
+                {'quantity': 'Only ingredient products can have opening stock.'},
+            )
+        return attrs
+
     def validate_quantity(self, value):
         if value < 0:
             raise serializers.ValidationError('Quantity cannot be negative.')
@@ -99,6 +111,12 @@ class InventoryMovementSerializer(serializers.ModelSerializer):
         if quantity is not None and quantity <= 0:
             raise serializers.ValidationError({'quantity': 'Quantity must be greater than zero.'})
 
+        product = attrs.get('product', getattr(self.instance, 'product', None))
+        if product and not product.tracks_inventory:
+            raise serializers.ValidationError(
+                {'product': 'This product type does not track inventory.'},
+            )
+
         if source == 'PURCHASE':
             raise serializers.ValidationError(
                 {'source': 'Purchase movements are created automatically when recording a purchase.'},
@@ -132,6 +150,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
     )
     transaction = TransactionSerializer(read_only=True)
     subtotal = serializers.SerializerMethodField()
+    purchase_date = serializers.DateField(required=False, write_only=True)
 
     class Meta:
         model = models.Purchase
@@ -143,6 +162,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
             'account',
             'transaction',
             'subtotal',
+            'purchase_date',
             'notes',
             'created_at',
             'updated_at',
@@ -155,18 +175,22 @@ class PurchaseSerializer(serializers.ModelSerializer):
     def _get_subtotal(self, quantity_bought, unit_price):
         return Decimal(quantity_bought) * Decimal(unit_price)
 
-    def _create_purchase_transaction(self, account, amount, product, notes, user):
+    def _create_purchase_transaction(
+        self, account, amount, product, notes, user, transaction_date
+    ):
         description = notes or f'Purchase: {product.name}'
         return models.Transaction.objects.create(
             transaction_type='E',
             account=account,
             amount=amount,
             description=description,
+            transaction_date=transaction_date,
             created_by=user,
         )
 
     def create(self, validated_data):
         account = validated_data.pop('account')
+        purchase_date = validated_data.pop('purchase_date', timezone.localdate())
         product = validated_data['product']
         quantity_bought = validated_data['quantity_bought']
         unit_price = validated_data['unit_price']
@@ -176,7 +200,7 @@ class PurchaseSerializer(serializers.ModelSerializer):
 
         with db_transaction.atomic():
             purchase_transaction = self._create_purchase_transaction(
-                account, amount, product, notes, user
+                account, amount, product, notes, user, purchase_date
             )
             purchase = models.Purchase.objects.create(
                 transaction=purchase_transaction,

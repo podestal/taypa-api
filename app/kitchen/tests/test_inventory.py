@@ -32,6 +32,29 @@ class TestInventoryMovementAPI:
         assert product.quantity == initial_quantity - Decimal('5.00')
         assert models.InventoryMovement.objects.filter(source='USAGE').count() == 1
 
+    def test_create_other_product_movement_is_blocked(
+        self, authenticated_api_client, product
+    ):
+        other_product = models.Product.objects.create(
+            name='[TEST] Misc Item',
+            product_type=models.Product.TYPE_OTHER,
+        )
+
+        response = authenticated_api_client.post(
+            reverse('kitchen-inventory-movement-list'),
+            {
+                'product': other_product.id,
+                'movement_type': 'OUT',
+                'quantity': '1.00',
+                'source': 'USAGE',
+                'movement_date': str(date.today()),
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'product' in response.data
+
     def test_create_waste_movement_requires_out_type(
         self, authenticated_api_client, product
     ):

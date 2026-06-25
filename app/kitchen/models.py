@@ -8,16 +8,37 @@ class Product(models.Model):
     """
     Represents an inventory product.
     """
+
+    TYPE_INGREDIENT = 'I'
+    TYPE_OTHER = 'O'
+
+    PRODUCT_TYPE_CHOICES = [
+        (TYPE_INGREDIENT, 'Ingredient'),
+        (TYPE_OTHER, 'Other'),
+    ]
+
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
+    product_type = models.CharField(
+        max_length=10,
+        choices=PRODUCT_TYPE_CHOICES,
+        default=TYPE_INGREDIENT,
+    )
     quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     weight = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     volume = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    class Meta:
+        ordering = ['name']
+
     def __str__(self):
         return self.name
+
+    @property
+    def tracks_inventory(self):
+        return self.product_type == self.TYPE_INGREDIENT
 
 
 class Category(models.Model):

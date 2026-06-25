@@ -66,6 +66,84 @@ class TestProductEdgeCases:
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert 'quantity' in response.data
 
+    def test_create_product_with_product_type(self, authenticated_api_client):
+        response = authenticated_api_client.post(
+            reverse('kitchen-product-list'),
+            {
+                'name': '[TEST] Misc Supply',
+                'product_type': models.Product.TYPE_OTHER,
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['product_type'] == models.Product.TYPE_OTHER
+        assert response.data['quantity'] == '0.00'
+
+    def test_create_other_product_rejects_opening_quantity(self, authenticated_api_client):
+        response = authenticated_api_client.post(
+            reverse('kitchen-product-list'),
+            {
+                'name': '[TEST] Misc Supply',
+                'product_type': models.Product.TYPE_OTHER,
+                'quantity': '10.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'quantity' in response.data
+
+    def test_list_products_shows_ingredients_by_default(
+        self, authenticated_api_client, product
+    ):
+        baker.make(
+            models.Product,
+            name='[TEST] Misc Item',
+            product_type=models.Product.TYPE_OTHER,
+        )
+
+        response = authenticated_api_client.get(reverse('kitchen-product-list'))
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == product.id
+
+    def test_list_products_filter_by_product_type(
+        self, authenticated_api_client, product
+    ):
+        other_product = baker.make(
+            models.Product,
+            name='[TEST] Misc Item',
+            product_type=models.Product.TYPE_OTHER,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-product-list'),
+            {'product_type': models.Product.TYPE_OTHER},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == other_product.id
+
+    def test_list_products_include_all(
+        self, authenticated_api_client, product
+    ):
+        baker.make(
+            models.Product,
+            name='[TEST] Misc Item',
+            product_type=models.Product.TYPE_OTHER,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-product-list'),
+            {'include_all': 'true'},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+
     def test_update_product_quantity_directly_is_not_allowed(
         self, authenticated_api_client, product
     ):

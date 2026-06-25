@@ -1,13 +1,23 @@
 import pytest
+from datetime import date, timedelta
 from decimal import Decimal
 
 from django.urls import reverse
+from model_bakery import baker
 from rest_framework import status
 
 from kitchen import models
 
 
-def _create_purchase(client, product, account, quantity_bought='10.00', unit_price='2.50', notes=''):
+def _create_purchase(
+    client,
+    product,
+    account,
+    quantity_bought='10.00',
+    unit_price='2.50',
+    notes='',
+    purchase_date=None,
+):
     url = reverse('kitchen-purchase-list')
     payload = {
         'product': product.id,
@@ -16,6 +26,8 @@ def _create_purchase(client, product, account, quantity_bought='10.00', unit_pri
         'unit_price': unit_price,
         'notes': notes,
     }
+    if purchase_date is not None:
+        payload['purchase_date'] = str(purchase_date)
     return client.post(url, payload, format='json')
 
 
@@ -47,6 +59,174 @@ class TestKitchenPurchaseCreate:
         account.refresh_from_db()
         assert product.quantity == initial_quantity + Decimal('10.00')
         assert account.balance == initial_balance - expected_subtotal
+
+    def test_create_purchase_for_other_product_records_expense_without_inventory(
+        self, authenticated_api_client, account
+    ):
+        product_response = authenticated_api_client.post(
+            reverse('kitchen-product-list'),
+            {
+                'name': '[TEST] Cleaning Service',
+                'product_type': models.Product.TYPE_OTHER,
+            },
+            format='json',
+        )
+        other_product = models.Product.objects.get(pk=product_response.data['id'])
+        initial_balance = account.balance
+
+        response = _create_purchase(authenticated_api_client, other_product, account)
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['transaction']['amount'] == '25.00'
+
+        purchase = models.Purchase.objects.get(pk=response.data['id'])
+        assert not hasattr(purchase, 'inventory_movement')
+
+        other_product.refresh_from_db()
+        account.refresh_from_db()
+        assert other_product.quantity == Decimal('0.00')
+        assert account.balance == initial_balance - Decimal('25.00')
+
+    def test_create_purchase_with_custom_date(
+        self, authenticated_api_client, product, account
+    ):
+        purchase_date = date.today() - timedelta(days=4)
+
+        response = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=purchase_date,
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['transaction']['transaction_date'] == str(purchase_date)
+
+        purchase = models.Purchase.objects.get(pk=response.data['id'])
+        assert purchase.inventory_movement.movement_date == purchase_date
+
+
+@pytest.mark.django_db
+class TestKitchenPurchaseListFilters:
+    def test_list_purchases_by_date(
+        self, authenticated_api_client, product, other_product, account
+    ):
+        today = date.today()
+        yesterday = today - timedelta(days=1)
+
+        tomatoes_purchase_id = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=yesterday,
+        ).data['id']
+        _create_purchase(
+            authenticated_api_client,
+            other_product,
+            account,
+            purchase_date=today,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-purchase-list'),
+            {'date': str(yesterday)},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == tomatoes_purchase_id
+
+    def test_list_purchases_by_date_range(
+        self, authenticated_api_client, product, other_product, account
+    ):
+        today = date.today()
+        two_days_ago = today - timedelta(days=2)
+        yesterday = today - timedelta(days=1)
+
+        _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=two_days_ago,
+        )
+        middle_purchase_id = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=yesterday,
+        ).data['id']
+        _create_purchase(
+            authenticated_api_client,
+            other_product,
+            account,
+            purchase_date=today,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-purchase-list'),
+            {
+                'start_date': str(yesterday),
+                'end_date': str(today),
+            },
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 2
+        assert middle_purchase_id in {row['id'] for row in response.data}
+
+    def test_list_purchases_by_product(
+        self, authenticated_api_client, product, other_product, account
+    ):
+        today = date.today()
+
+        tomatoes_purchase_id = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=today,
+        ).data['id']
+        _create_purchase(
+            authenticated_api_client,
+            other_product,
+            account,
+            purchase_date=today,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-purchase-list'),
+            {'product_id': product.id},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == tomatoes_purchase_id
+
+    def test_list_purchases_by_account(
+        self, authenticated_api_client, product, account, second_account
+    ):
+        today = date.today()
+
+        cash_purchase_id = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=today,
+        ).data['id']
+        _create_purchase(
+            authenticated_api_client,
+            product,
+            second_account,
+            purchase_date=today,
+        )
+
+        response = authenticated_api_client.get(
+            reverse('kitchen-purchase-list'),
+            {'account_id': account.id},
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) == 1
+        assert response.data[0]['id'] == cash_purchase_id
 
 
 @pytest.mark.django_db

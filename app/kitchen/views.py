@@ -9,9 +9,20 @@ from . import finances, inventory, models, serializers
 
 
 class ProductViewSet(viewsets.ModelViewSet):
-    queryset = models.Product.objects.all()
     serializer_class = serializers.ProductSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = models.Product.objects.all()
+        product_type = self.request.query_params.get('product_type')
+        include_all = self.request.query_params.get('include_all')
+
+        if product_type:
+            queryset = queryset.filter(product_type=product_type)
+        elif self.action == 'list' and include_all != 'true':
+            queryset = queryset.filter(product_type=models.Product.TYPE_INGREDIENT)
+
+        return queryset
 
 
 class AccountViewSet(viewsets.ModelViewSet):
@@ -144,14 +155,36 @@ class SaleViewSet(viewsets.ModelViewSet):
 
 
 class PurchaseViewSet(viewsets.ModelViewSet):
-    queryset = models.Purchase.objects.select_related(
-        'product',
-        'transaction',
-        'transaction__account',
-        'inventory_movement',
-    )
     serializer_class = serializers.PurchaseSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = models.Purchase.objects.select_related(
+            'product',
+            'transaction',
+            'transaction__account',
+            'inventory_movement',
+        )
+
+        product_id = self.request.query_params.get('product_id')
+        account_id = self.request.query_params.get('account_id')
+        purchase_date = self.request.query_params.get('date')
+        start_date = self.request.query_params.get('start_date')
+        end_date = self.request.query_params.get('end_date')
+
+        if product_id:
+            queryset = queryset.filter(product_id=product_id)
+        if account_id:
+            queryset = queryset.filter(transaction__account_id=account_id)
+        if purchase_date:
+            queryset = queryset.filter(transaction__transaction_date=purchase_date)
+        else:
+            if start_date:
+                queryset = queryset.filter(transaction__transaction_date__gte=start_date)
+            if end_date:
+                queryset = queryset.filter(transaction__transaction_date__lte=end_date)
+
+        return queryset
 
     def perform_destroy(self, instance):
         with db_transaction.atomic():
@@ -237,7 +270,9 @@ class InventoryCurrentView(APIView):
     # permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        products = models.Product.objects.all().order_by('name')
+        products = models.Product.objects.filter(
+            product_type=models.Product.TYPE_INGREDIENT,
+        ).order_by('name')
         product_id = request.query_params.get('product_id')
         if product_id:
             products = products.filter(pk=product_id)

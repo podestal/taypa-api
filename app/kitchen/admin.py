@@ -55,7 +55,8 @@ class SaleToppingAdmin(admin.ModelAdmin):
 
 @admin.register(models.Product)
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ['name', 'quantity', 'weight', 'volume', 'created_at', 'updated_at']
+    list_display = ['name', 'product_type', 'quantity', 'weight', 'volume', 'created_at']
+    list_filter = ['product_type']
     search_fields = ['name', 'description']
 
 
