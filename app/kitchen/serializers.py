@@ -151,6 +151,16 @@ class PurchaseSerializer(serializers.ModelSerializer):
     transaction = TransactionSerializer(read_only=True)
     subtotal = serializers.SerializerMethodField()
     purchase_date = serializers.DateField(required=False, write_only=True)
+    quantity_bought = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
+    unit_price = serializers.DecimalField(
+        max_digits=10,
+        decimal_places=2,
+        required=False,
+    )
 
     class Meta:
         model = models.Purchase
@@ -175,6 +185,27 @@ class PurchaseSerializer(serializers.ModelSerializer):
     def _get_subtotal(self, quantity_bought, unit_price):
         return Decimal(quantity_bought) * Decimal(unit_price)
 
+    def validate(self, attrs):
+        quantity_bought = attrs.get(
+            'quantity_bought',
+            getattr(self.instance, 'quantity_bought', Decimal('0')),
+        )
+        unit_price = attrs.get(
+            'unit_price',
+            getattr(self.instance, 'unit_price', Decimal('0')),
+        )
+
+        if quantity_bought < 0:
+            raise serializers.ValidationError(
+                {'quantity_bought': 'Quantity cannot be negative.'},
+            )
+        if unit_price < 0:
+            raise serializers.ValidationError(
+                {'unit_price': 'Unit price cannot be negative.'},
+            )
+
+        return attrs
+
     def _create_purchase_transaction(
         self, account, amount, product, notes, user, transaction_date
     ):
@@ -191,6 +222,8 @@ class PurchaseSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         account = validated_data.pop('account')
         purchase_date = validated_data.pop('purchase_date', timezone.localdate())
+        validated_data.setdefault('quantity_bought', Decimal('0'))
+        validated_data.setdefault('unit_price', Decimal('0'))
         product = validated_data['product']
         quantity_bought = validated_data['quantity_bought']
         unit_price = validated_data['unit_price']
@@ -207,10 +240,15 @@ class PurchaseSerializer(serializers.ModelSerializer):
                 **validated_data,
             )
             inventory.sync_purchase_movement(purchase, user)
-        return purchase
+        return models.Purchase.objects.select_related(
+            'product',
+            'transaction',
+            'inventory_movement',
+        ).get(pk=purchase.pk)
 
     def update(self, instance, validated_data):
         account = validated_data.pop('account', None)
+        purchase_date = validated_data.pop('purchase_date', None)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
@@ -221,15 +259,23 @@ class PurchaseSerializer(serializers.ModelSerializer):
         with db_transaction.atomic():
             purchase_transaction = instance.transaction
             purchase_transaction.amount = new_amount
-            purchase_transaction.description = instance.notes or f'Purchase: {instance.product.name}'
+            purchase_transaction.description = (
+                instance.notes or f'Purchase: {instance.product.name}'
+            )
             if account:
                 purchase_transaction.account = account
+            if purchase_date is not None:
+                purchase_transaction.transaction_date = purchase_date
             purchase_transaction.save()
 
             instance.save()
             inventory.sync_purchase_movement(instance, user)
 
-        return instance
+        return models.Purchase.objects.select_related(
+            'product',
+            'transaction',
+            'inventory_movement',
+        ).get(pk=instance.pk)
 
 
 class CategorySerializer(serializers.ModelSerializer):

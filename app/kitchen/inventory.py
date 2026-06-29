@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction as db_transaction
 from django.db.models import Sum
 from django.utils import timezone
@@ -150,24 +151,23 @@ def delete_sale_movements(sale):
 
 
 def sync_purchase_movement(purchase, created_by):
-    if not purchase.product.tracks_inventory:
-        if hasattr(purchase, 'inventory_movement'):
-            delete_inventory_movement(purchase.inventory_movement)
+    try:
+        movement = purchase.inventory_movement
+    except ObjectDoesNotExist:
+        movement = None
+
+    if movement is not None:
+        delete_inventory_movement(movement)
+
+    purchase = models.Purchase.objects.select_related('product', 'transaction').get(
+        pk=purchase.pk,
+    )
+
+    if not purchase.product.tracks_inventory or purchase.quantity_bought <= 0:
         return None
 
     movement_date = purchase.transaction.transaction_date
     notes = purchase.notes or f'Purchase: {purchase.product.name}'
-
-    if hasattr(purchase, 'inventory_movement'):
-        movement = purchase.inventory_movement
-        apply_quantity_change(movement.product, 'OUT', movement.quantity)
-        movement.product = purchase.product
-        movement.quantity = purchase.quantity_bought
-        movement.movement_date = movement_date
-        movement.notes = notes
-        movement.save()
-        apply_quantity_change(purchase.product, 'IN', purchase.quantity_bought)
-        return movement
 
     return create_inventory_movement(
         product=purchase.product,

@@ -294,6 +294,108 @@ class TestKitchenPurchaseUpdate:
         assert product.quantity == tomatoes_quantity_after_create - Decimal('8.00')
         assert other_product.quantity == rice_quantity_before_update + Decimal('8.00')
 
+    def test_create_purchase_with_zero_quantity_skips_inventory(
+        self, authenticated_api_client, product, account
+    ):
+        initial_quantity = product.quantity
+
+        response = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            quantity_bought='0.00',
+            unit_price='5.00',
+            notes='Pending delivery',
+        )
+
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['subtotal'] == Decimal('0.00')
+        assert response.data['transaction']['amount'] == '0.00'
+
+        purchase = models.Purchase.objects.get(pk=response.data['id'])
+        assert not models.InventoryMovement.objects.filter(purchase=purchase).exists()
+
+        product.refresh_from_db()
+        assert product.quantity == initial_quantity
+
+    def test_update_purchase_adds_quantity_and_syncs_inventory(
+        self, authenticated_api_client, product, account
+    ):
+        create_response = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            quantity_bought='0.00',
+            unit_price='2.50',
+        )
+        purchase_id = create_response.data['id']
+        initial_quantity = product.quantity
+        initial_balance = account.balance
+
+        response = authenticated_api_client.patch(
+            reverse('kitchen-purchase-detail', kwargs={'pk': purchase_id}),
+            {
+                'quantity_bought': '12.00',
+                'unit_price': '3.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['subtotal'] == Decimal('36.00')
+        assert response.data['transaction']['amount'] == '36.00'
+
+        purchase = models.Purchase.objects.get(pk=purchase_id)
+        assert purchase.inventory_movement.quantity == Decimal('12.00')
+        assert purchase.inventory_movement.product_id == product.id
+
+        product.refresh_from_db()
+        account.refresh_from_db()
+        assert product.quantity == initial_quantity + Decimal('12.00')
+        assert account.balance == initial_balance - Decimal('36.00')
+
+    def test_update_purchase_date_account_and_notes(
+        self, authenticated_api_client, product, account, second_account
+    ):
+        purchase_date = date.today() - timedelta(days=5)
+        updated_date = date.today() - timedelta(days=2)
+
+        create_response = _create_purchase(
+            authenticated_api_client,
+            product,
+            account,
+            purchase_date=purchase_date,
+            notes='Initial note',
+        )
+        purchase_id = create_response.data['id']
+        account.refresh_from_db()
+        balance_after_create = account.balance
+        second_balance_before = second_account.balance
+
+        response = authenticated_api_client.patch(
+            reverse('kitchen-purchase-detail', kwargs={'pk': purchase_id}),
+            {
+                'account': second_account.id,
+                'purchase_date': str(updated_date),
+                'notes': 'Updated note',
+                'unit_price': '4.00',
+            },
+            format='json',
+        )
+
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['transaction']['transaction_date'] == str(updated_date)
+        assert response.data['transaction']['description'] == 'Updated note'
+        assert response.data['transaction']['amount'] == '40.00'
+
+        purchase = models.Purchase.objects.get(pk=purchase_id)
+        assert purchase.inventory_movement.movement_date == updated_date
+
+        account.refresh_from_db()
+        second_account.refresh_from_db()
+        assert account.balance == balance_after_create + Decimal('25.00')
+        assert second_account.balance == second_balance_before - Decimal('40.00')
+
 
 @pytest.mark.django_db
 class TestKitchenPurchaseDelete:
